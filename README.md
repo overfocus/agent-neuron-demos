@@ -1,5 +1,7 @@
 # agent-neuron demos
 
+<img src="assets/brand/icon-256.png" width="92" align="right" alt="agent-neuron-demos's mark: three neon-green neurons wired in a triangle with a cyan signal between them, on black">
+
 Demos of [agent-neuron](https://github.com/overfocus/agent-neuron)'s **decision
 surface**: agents do the work, the network file holds the team's rules, and
 people decide on the engine's desk, each with their own link, with every
