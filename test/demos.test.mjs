@@ -70,4 +70,9 @@ test('colony: ants forage without a scheduler, and the eager ones do more of it'
   assert.ok(r.drops.length >= 1, 'no drop site in the schedule');
   assert.ok(r.drops.every((d) => d.appear >= 0.3 * 15 && d.appear <= 0.8 * 15), `a drop outside the appear window: ${JSON.stringify(r.drops)}`);
   assert.ok(Array.isArray(r.empties) && r.empties.every((e) => typeof e.food === 'string'), 'empties not shaped');
+  // The ground the engine keeps: the nest's drumbeat writes the trail per
+  // arrival, the settle beat reports, and the drops arrive on schedule.
+  assert.ok(r.groundWrites >= 10, `only ${r.groundWrites} ground writes`);
+  assert.ok(r.drops.some((d) => d.id.startsWith('drop-')), 'no drop in the schedule');
+  assert.ok('wasted' in r && Array.isArray(r.empties), 'the dry report is missing');
 });
