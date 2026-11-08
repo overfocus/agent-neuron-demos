@@ -21,7 +21,8 @@ from playwright.sync_api import sync_playwright
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render the colony video: composition.html, stepped through time.")
     here = pathlib.Path(__file__).parent
-    ap.add_argument("--data", default="data.js", help="the frozen dataset, beside composition.html")
+    ap.add_argument("--data", default="data.js", help="the frozen dataset, beside the composition")
+    ap.add_argument("--html", default="composition.html", help="the composition page, in this directory")
     ap.add_argument("--fps", type=int, default=60)
     ap.add_argument("--seconds", type=float, default=None, help="override the composition's length")
     ap.add_argument("--frames", default=here / "frames", help="PNG output directory")
@@ -33,7 +34,7 @@ def main() -> int:
 
     frames = pathlib.Path(args.frames)
     events_path = here / "sound-events.json"
-    url = (here / "composition.html").as_uri() + f"?data={pathlib.Path(args.data).name}"
+    url = (here / args.html).as_uri() + f"?data={pathlib.Path(args.data).name}"
 
     with sync_playwright() as p:
         browser = p.chromium.launch()

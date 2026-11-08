@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>backlog — rendered</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050607; overflow: hidden; }
+  #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  .cap { position: absolute; left: 120px; right: 620px; color: #e8f4ec;
+         font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+         font-weight: 700; letter-spacing: -0.01em; opacity: 0; will-change: opacity; }
+  .cap .accent { color: #59f77c; }
+  .cap .cyan { color: #4ad6ff; }
+  .cap .amber { color: #ffb347; }
+  .cap .red { color: #ff6f59; }
+  .cap .dim { color: #8fa89a; font-weight: 600; }
+  .cap .line { display: block; }
+  .cap.dim2 { color: #8fa89a; }
+  #endcard { position: absolute; inset: 0; display: flex; flex-direction: column;
+             justify-content: center; align-items: flex-start; padding: 0 160px; opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<div style="position:absolute; inset:0; pointer-events:none">
+  <div class="cap" id="cap-hook"     style="top: 300px; font-size: 88px; line-height: 1.2;"></div>
+  <div class="cap" id="cap-board"    style="top: 928px; font-size: 38px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-auto"     style="top: 96px; font-size: 42px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-flag"     style="top: 940px; font-size: 44px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-refuse"   style="top: 120px; font-size: 46px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-req"      style="top: 596px; font-size: 40px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-arch"     style="top: 928px; font-size: 40px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-sum"      style="top: 110px; font-size: 46px; line-height: 1.4; right: 260px;"></div>
+  <div id="endcard"></div>
+</div>
+<script>
+  // The rendered backlog: the same pipeline as the colony — scenes as pure
+  // functions of time over a frozen run. t in, picture out.
+  const Q = new URLSearchParams(location.search);
+  document.write(`<script src="${Q.get('data') ?? 'data-backlog.js'}"><\/script>`);
+</script>
+<script>
+'use strict';
+const D = window.COLONY;
+const FACTS = D.facts;
+const RUN = D.seconds * 1000;
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const win = (a, b, t) => { const u = clamp((t - a) / Math.max(1e-9, b - a), 0, 1); return u * u * (3 - 2 * u); };
+const rise = win, fade = (a, b, t) => 1 - win(a, b, t);
+const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+
+const GRAIN = (() => {
+  const rnd = ((a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; })(1);
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const g = c.getContext('2d'), img = g.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 118 + Math.floor(rnd() * 18); img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 10; }
+  g.putImageData(img, 0, 0); return c;
+})();
+
+// ---------- the run's own beats decide the lens list ----------
+const B = D.beats;
+const STOPS = [0, B.firstFlag, B.refusalT, B.sentBackT, Math.min(RUN, Math.max(B.splitT + 800, B.sentBackT + 1600, B.firstFlag + 4600))].filter((v, i, a) => i === 0 || v > a[i - 1] + 900);
+function buildSegments() {
+  const durs = [7.8, 3.2, 2.8, 3.0, 4.6, 2.8, 3.0, 3.6];
+  const names = ['trails', 'approach', 'dry-lens', 'post-dry', 'recruit', 'pre-drop', 'drop-lens', 'reroute'];
+  const n = Math.max(2, STOPS.length);
+  const segs = [];
+  let v = 8.6, c = 0;
+  for (let i = 0; i < 7; i++) {
+    const c1 = Math.max(c + 250, Math.round(lerp(c, STOPS[Math.min(i + 1, n - 1)], 1)));
+    segs.push({ name: names[i], v0: v, v1: v + durs[i], c0: c, c1: Math.min(c1 + (i === 0 ? 0 : 0), RUN) });
+    v += durs[i]; c = Math.min(c1, RUN);
+  }
+  segs.push({ name: names[7], v0: v, v1: v + durs[7], c0: c, c1: RUN });
+  window.PLAY_END = v + durs[7];
+  return segs;
+}
+const SEG = buildSegments();
+const SEG_BY = Object.fromEntries(SEG.map((s) => [s.name, s]));
+const the = (n) => SEG_BY[n] ?? SEG_BY.recroute ?? SEG[SEG.length - 1];
+const PLAY_END = 39.4;
+function colonyT(vt) {
+  if (vt < SEG[0].v0) return 0;
+  for (const s of SEG) if (vt <= s.v1) {
+    const u = clamp((vt - s.v0) / (s.v1 - s.v0), 0, 1);
+    return lerp(s.c0, s.c1, u);
+  }
+  return SEG[SEG.length - 1].c1;
+}
+const videoT = (ct) => {
+  if (ct < SEG[0].c0) return SEG[0].v0;
+  for (const s of SEG) if (ct < s.c1) return lerp(s.v0, s.v1, (ct - s.c0) / (s.c1 - s.c0));
+  return SEG[SEG.length - 1].v1;
+};
+window.mapColonyToVideo = videoT;
+
+// ---------- the board ----------
+const LANE = { bug: 208, requirement: 496, architectur: 806 };
+const ST = {
+  bugs: [110, 'bug'], fixer: [392, 'bug'], rules: [672, 'bug'], land: [1152, 'bug'], escalate: [946, 'bug', -56], 'lead-bugs': [1152, 'bug', -56],
+  requirements: [110, 'requirement'], spec: [384, 'requirement'], 'ada-req': [690, 'requirement', -56], 'lin-req': [690, 'requirement', 56], plan: [1152, 'requirement'],
+  architecture: [110, 'architectur'], adr: [348, 'architectur'], 'ada-arch': [620, 'architectur', -56], 'lin-arch': [620, 'architectur', 56],
+  council: [862, 'architectur'], 'lead-arch': [1104, 'architectur'], record: [1332, 'architectur'],
+};
+const st = (s) => {
+  const d = ST[s] ?? [1400, 'architectur'];
+  return [30 + d[0], LANE[d[1]] + (d[2] ?? 0)];
+};
+const EFFECT = ['land', 'record'];
+const PERSON = { 'ada-req': 'Ada', 'lin-req': 'Lin', 'ada-arch': 'Ada', 'lin-arch': 'Lin', 'lead-bugs': 'Sam', 'lead-arch': 'Sam' };
+const WHO_COLOR = { ada: '#59f77c', lin: '#4ad6ff', sam: '#ffb347' };
+const BG = '#050607', INK = '#e8f4ec', GREEN = '#59f77c', CYAN = '#4ad6ff', AMBER = '#ffb347', RED = '#ff6f59', DEAD = '#5b6a63';
+const FONT = (w, px2) => `${w} ${px2}px -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+
+// ---------- chip motion: gliding on the item's own station times ----------
+function chipAt(item, ct) {
+  const S = item.stations;
+  let last = S[0];
+  for (let i = 0; i < S.length; i++) {
+    if (S[i].t <= ct) last = S[i]; else {
+      const [x0, y0] = st(last.s), [x1, y1] = st(S[i].s);
+      const u = clamp((ct - last.t) / Math.max(1, S[i].t - last.t), 0, 1);
+      return { x: lerp(x0, x1, u), y: lerp(y0, y1, u), at: S[i].s, waiting: false, arrived: false, died: false };
+    }
+  }
+  const [x, y] = st(last.s);
+  return { x, y, at: last.s, waiting: !last.died && (last.s in PERSON), arrived: true, died: Boolean(last.died) };
+}
+
+// ---------- canvas ----------
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const grainPat = ctx.createPattern(GRAIN, 'repeat');
+
+function drawBoard(t) {
+  const k = rise(3.7, 4.4, t);
+  ctx.save(); ctx.globalAlpha = k;
+  for (const laneName of ['bug', 'requirement', 'architectur']) {
+    const y = LANE[laneName];
+    ctx.strokeStyle = 'rgba(120,150,135,0.16)'; ctx.lineWidth = 2;
+    ctx.setLineDash([2, 8]);
+    ctx.beginPath(); ctx.moveTo(60, y - 40); ctx.lineTo(1180, y - 40); ctx.moveTo(60, y + 40); ctx.lineTo(1180, y + 40);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(143,168,154,0.8)'; ctx.font = FONT(700, 19);
+    ctx.fillText(laneName === 'bug' ? 'BUGS' : laneName === 'requirement' ? 'REQUIREMENTS' : 'ARCHITECTURE', 62, y - 74);
+  }
+  for (const s of Object.keys(ST)) {
+    const [x, y] = st(s), person = PERSON[s];
+    const e = rise(3.9 + (ST[s][0] / 1000), 4.2 + (ST[s][0] / 1000), t);
+    if (e <= 0) continue;
+    const r = person ? 26 : 15;
+    ctx.beginPath(); ctx.arc(x, y, r * e, 0, Math.PI * 2);
+    ctx.fillStyle = person ? '#0d1411' : '#101513';
+    ctx.globalAlpha = k * (person ? 1 : 0.9); ctx.fill();
+    ctx.strokeStyle = person ? 'rgba(74,214,255,0.75)' : 'rgba(143,168,154,0.55)';
+    ctx.lineWidth = 2; ctx.stroke();
+    if (EFFECT.includes(s)) {                    // ⚑ an effect: a person's answer runs it
+      ctx.fillStyle = AMBER; ctx.font = FONT(700, 15);
+      ctx.fillText('⚑ ' + s, x - 22, y - r - 8);
+    }
+    ctx.fillStyle = person ? 'rgba(74,214,255,0.95)' : 'rgba(143,168,154,0.9)';
+    ctx.font = FONT(600, 14);
+    ctx.fillText(person ? person : s, x - (person ? 14 : 16), y + r + 16);
+  }
+  ctx.restore();
+}
+
+function drawChips(t, ct, live) {
+  for (const it of D.items) {
+    const born = win(it.tIn - 120, it.tIn + 300, ct);
+    if (born <= 0) continue;
+    const pos = chipAt(it, ct);
+    const verdict = it.verdict ?? 'clean';
+    const flagged = verdict !== 'clean';
+    const refused = ct >= B.refusalT && it.id === (D.refused[0]?.id ?? '') && false;
+    // the chip
+    ctx.save(); ctx.globalAlpha = born;
+    const hue = it.lane === 'bug' ? 'rgba(255,111,157,' : it.lane === 'requirement' ? 'rgba(74,214,255,' : 'rgba(184,164,255,';
+    ctx.beginPath(); ctx.roundRect(pos.x - 32, pos.y - 12, 64, 24, 6);
+    ctx.fillStyle = `rgba(13,20,17,0.96)`; ctx.fill();
+    ctx.strokeStyle = pos.died ? RED : flagged ? DEAD : (pos.arrived && pos.at === 'land' ? GREEN : hue + '0.8)');
+    ctx.lineWidth = pos.died ? 2 : flagged ? 1.5 : 2; ctx.stroke();
+    if (pos.died) {                                   // refused at the station: the work never starts
+      ctx.beginPath(); ctx.moveTo(pos.x - 10, pos.y); ctx.lineTo(pos.x + 10, pos.y);
+      ctx.strokeStyle = 'rgba(255,111,89,0.9)'; ctx.lineWidth = 3; ctx.stroke();
+    }
+    if (flagged && verdict !== '') {
+      ctx.beginPath(); ctx.arc(pos.x + 24, pos.y - 14, 5, 0, Math.PI * 2);
+      ctx.fillStyle = verdict === 'slop' ? RED : AMBER; ctx.fill();
+    }
+    if (it.budget === 'low') {
+      ctx.strokeStyle = 'rgba(139,58,58,0.9)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(pos.x - 36, pos.y - 15, 72, 30, 8); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle = INK; ctx.font = FONT(700, 13);
+    ctx.fillText(it.id, pos.x - 24, pos.y + 4);
+    // breathing: a person is being asked, before the word comes back
+    if (pos.waiting && live) {
+      const ph = (ct / 300) % (Math.PI * 2);
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, 20 + 5 * Math.sin(ph), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(74,214,255,0.5)`; ctx.lineWidth = 2; ctx.stroke();
+    }
+    if (pos.arrived && (pos.at === 'land') && live && ct - (it.stations.find((s) => s.s === 'land')?.t ?? 0) < 900) {
+      ctx.strokeStyle = `rgba(89,247,124,${(0.8 * (1 - (ct - it.stations.find((s) => s.s === 'land').t) / 900)).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, 22 + 26 * ((ct - it.stations.find((s) => s.s === 'land').t) / 900), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// the ledger: the runs' own desk answers, stacked as they land
+function drawLedger(t, ct, live) {
+  const done = D.ledger.filter((l) => l.t != null && l.t <= ct);
+  const x = 1436, top = 96, lh = 52, maxn = 9;
+  const shown = done.slice(-maxn);
+  ctx.save();
+  ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(700, 18);
+  ctx.fillText('the desk — with who and why', x, top - 24);
+  ctx.strokeStyle = 'rgba(143,168,154,0.25)'; ctx.beginPath(); ctx.moveTo(x - 12, top - 12); ctx.lineTo(1908, top - 12); ctx.stroke();
+  shown.forEach((l, i) => {
+    const y = top + lh * i;
+    const col = WHO_COLOR[l.who] ?? INK;
+    ctx.fillStyle = col; ctx.font = FONT(700, 19);
+    const name = l.who === 'ada' ? 'Ada' : l.who === 'lin' ? 'Lin' : 'Sam';
+    const verb = ({ accept: 'accepts', rework: 'sends back', reject: 'rejects' })[l.choice] ?? l.choice;
+    ctx.fillText(`${name} ${verb} ${l.id}`, x, y);
+    if (l.why) {
+      ctx.fillStyle = 'rgba(143,168,154,0.9)'; ctx.font = FONT(500, 14);
+      ctx.fillText(l.why.length > 64 ? l.why.slice(0, 62) + '…' : l.why, x, y + 20);
+    }
+    void i; void y;
+  });
+  ctx.restore();
+}
+
+function drawScores(t, s) {
+  const lines = [
+    [GREEN, `${FACTS.landedAuto} bugs landed on their own`],
+    [AMBER, `${FACTS.flagged.length} flagged by the house rules — ${FACTS.landedLead} let through`],
+    [RED, `${FACTS.refused} refused by its budget`],
+    [CYAN, `${FACTS.scheduled.length} requirements scheduled, ${FACTS.sentBack.length} sent back`],
+    [INK, FACTS.records.join(' · ') || 'no ADRs'],
+  ];
+  const y0 = 300, lh = 92, bw = 34;
+  lines.forEach(([col, text], i) => {
+    const e = rise(s + 0.3 + i * 0.14, s + 0.8 + i * 0.14, t);
+    if (e <= 0) return;
+    ctx.save(); ctx.globalAlpha = e;
+    ctx.beginPath(); ctx.roundRect(220, y0 + i * lh - 10, bw * (1 + (i % 3)) * 1.6, 44, 6);
+    ctx.fillStyle = 'rgba(13,20,17,0.8)'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = col; ctx.font = FONT(700, 40);
+    ctx.fillText(text.split(' ')[0] !== 'ARCH-1' ? text : text, 280, y0 + i * lh + 24);
+    ctx.restore();
+  });
+  void lines; void bw;
+}
+
+// ---------- one frame ----------
+window.VIDEO_SECONDS = 46.4;
+function renderFrame(t) {
+  const inPlay = t >= 8.6 && t < PLAY_END;
+  const ct = inPlay ? colonyT(t) : 0;
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, 1920, 1080);
+  ctx.save();                                     // the board dims under the summary and the end
+  ctx.globalAlpha = t < 39.4 ? 1 : t < 43.6 ? 0.4 : fade(43.45, 43.9, t);
+  drawBoard(t);
+  drawChips(t, ct, inPlay);
+  drawLedger(t, ct, inPlay);
+  ctx.restore();
+  if (t > 39.7 && t < 43.5) drawScores(t);
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.translate(-Math.floor(t * 30) % 256, -Math.floor(t * 47) % 256);
+  ctx.fillStyle = grainPat; ctx.fillRect(0, 0, 2176, 1336); ctx.restore();
+  const vg = ctx.createRadialGradient(960, 540, 520, 960, 540, 1250);
+  vg.addColorStop(0, 'rgba(5,6,7,0)'); vg.addColorStop(1, 'rgba(5,6,7,0.55)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, 1920, 1080);
+  captions(t);
+  return t;
+}
+
+// ---------- captions ----------
+function set(id, html, o) {
+  const el = document.getElementById(id);
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.style.opacity = clamp(o, 0, 1).toFixed(3);
+  el.style.transform = `translateY(${((1 - clamp(o, 0, 1)) * 14).toFixed(1)}px)`;
+}
+function captions(t) {
+  const total = FACTS.bugs + FACTS.requirements + FACTS.architecture;
+  if (t < 3.4) {
+    const L = [[0.3, `<span class="line">${total} items in.</span>`],
+               [1.0, `<span class="line">Three people.</span>`],
+               [1.9, `<span class="line dim">no meetings.</span></span>`],
+               [2.6, `<span class="line accent">The house rules decide who is asked.</span>`]];
+    let shown = L[0][1];
+    for (const [a, h] of L) if (t >= a) shown = h;
+    set('cap-hook', shown, t < 3.0 ? rise(0.22, 0.6, t) : fade(3.0, 3.35, t));
+  } else set('cap-hook', '', 0);
+  set('cap-board', t > 3.6 && t < 8.6
+    ? `<span class="dim">three lanes. agents do the work — the rules of the house are a data file the repo reviews</span>`
+    : '', t > 3.6 && t < 8.6 ? rise(3.6, 4.1, t) * fade(8.1, 8.55, t) : 0);
+  const autW = the('trails');
+  set('cap-auto', t > autW.v0 + 0.8 && t < autW.v1 + 2.8
+    ? `most bugs never reach a person: <span class="accent">fix, check against the rules, land</span>.`
+    : '', t > autW.v0 + 0.8 && t < autW.v1 + 2.8 ? rise(autW.v0 + 0.8, autW.v0 + 1.3, t) * fade(autW.v1 + 2.1, autW.v1 + 2.7, t) : 0);
+  const flagW = the('dry-lens'), postW = the('post-dry');
+  const flagged = D.items.find((i) => (i.verdict ?? 'clean') !== 'clean');
+  if (flagged && t > flagW.v0 - 0.2 && t < postW.v1) {
+    set('cap-flag', `<span class="line"><span class="amber">${flagged.id}: ${flagged.verdict === 'slop' ? 'slop' : 'a lock-in'}.</span> The rules flag it — to Sam, with the findings.</span>` +
+      `<span class="line dim">no meeting: this is the desk deciding, with who and why on the record.</span>`,
+      rise(flagW.v0 - 0.2, flagW.v0 + 0.3, t) * fade(postW.v1 - 0.3, postW.v1 + 0.05, t));
+  } else set('cap-flag', '', 0);
+  const refW = the('recruit');
+  const ref = D.refused[0];
+  set('cap-refuse', t > refW.v0 + 0.2 && t < refW.v1 + 0.6
+    ? (ref ? `<span class="line"><span class="red">${ref.id}</span> was injected with a smaller budget.</span><span class="line">refused at the fixer — <span class="red">the work never starts</span>.</span>` : '')
+    : '', t > refW.v0 + 0.2 && t < refW.v1 + 0.6 && ref ? rise(refW.v0 + 0.2, refW.v0 + 0.7, t) * fade(refW.v1, refW.v1 + 0.55, t) : 0);
+  const reqW = the('drop-lens');
+  const sent = FACTS.sentBack[0] ?? '';
+  set('cap-req', t > reqW.v0 - 0.4 && t < reqW.v1 + 2.0
+    ? (sent ? `${sent}. <span class="dim">a person's word, on the record.</span>` : '')
+    : '', t > reqW.v0 - 0.4 && t < reqW.v1 + 2.0 ? rise(reqW.v0 - 0.4, reqW.v0 + 0.1, t) * fade(reqW.v1 + 1.3, reqW.v1 + 1.95, t) : 0);
+  const archW = the('reroute');
+  set('cap-arch', t > archW.v0 - 0.1 && t < archW.v1 + 0.2
+    ? `<span class="accent">${FACTS.records[1] ?? ''}</span> — the ICs split, Sam decides, <span class="dim">and it is written down either way.</span>`
+    : '', t > archW.v0 - 0.1 && t < archW.v1 + 0.2 ? rise(archW.v0 - 0.1, archW.v0 + 0.4, t) : 0);
+  if (t > 39.7 && t < 43.5) {
+    set('cap-sum', `the week, on one record: <span class="accent">${FACTS.decisions} decisions</span>, each with who and why.`,
+      rise(39.7, 40.2, t) * fade(42.7, 43.4, t));
+  } else set('cap-sum', '', 0);
+  const ec = document.getElementById('endcard');
+  if (t > 43.5) {
+    ec.style.opacity = rise(43.5, 44.0, t).toFixed(3);
+    if (ec.dataset.h !== 'e') {
+      ec.dataset.h = 'e';
+      ec.innerHTML = `
+        <div class="cap" style="position:static; opacity:1; font-size:74px">agent-neuron</div>
+        <div class="cap" style="position:static; opacity:1; font-size:40px; margin-top:14px"><span class="accent">no meetings.</span> the graph is the referee.</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:29px; margin-top:44px">${FACTS.decisions} decisions · ${FACTS.records.length} ADRs written · ${FACTS.scheduled.length} scheduled · ${FACTS.flagged.length} flagged</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:25px; margin-top:10px">the house rules are a data file in the repo, not anyone's prompt · rendered from the run's own record</div>`;
+    }
+  } else if (t < 43.3) { if (ec.dataset.h) { ec.dataset.h = ''; ec.style.opacity = '0'; ec.innerHTML = ''; } }
+}
+
+// ---------- sound: when the scenes want it ----------
+function soundEvents() {
+  const ev = [];
+  const add = (t, kind, gain = 1, param = null) => ev.push({ t: Math.round(t * 1000) / 1000, kind, gain: Math.round(gain * 100) / 100, param });
+  add(0.10, 'bed', 1, window.VIDEO_SECONDS);
+  for (const a of [0.30, 1.00, 1.90, 2.60]) add(a, 'type', 0.9);
+  for (const a of [0.45, 3.8, 4.1, 4.4, 4.7, 5.0]) add(a, 'pop', 0.7);
+  for (const s of SEG) {
+    let lastPop = -9, lastBlip = -9;
+    for (const it of D.items) {
+      for (const stn of it.stations) {
+        if (stn.t < s.c0 || stn.t >= s.c1 || stn.s === it.stations[0].s) continue;
+        const vt = videoT(stn.t);
+        if (vt - lastPop < 0.5) continue;
+        lastPop = vt;
+        add(vt, stn.s === 'land' ? 'pop' : stn.s === 'record' ? 'drop' : 'whoosh', stn.s === 'land' ? 0.9 : 0.6);
+      }
+    }
+    for (const l of D.ledger) {
+      if (l.t == null || l.t < s.c0 || l.t >= s.c1) continue;
+      const vt = videoT(l.t);
+      if (vt - lastBlip < 0.4) continue;
+      lastBlip = vt; add(vt, 'blip', 0.55);
+    }
+    if (s.c0 <= B.refusalT && B.refusalT < s.c1) add(videoT(B.refusalT), 'thud', 1);
+  }
+  add(39.6, 'settle', 1);
+  add(43.55, 'stamp', 1);
+  return ev.sort((a, b) => a.t - b.t);
+}
+window.soundEvents = soundEvents;
+window.renderFrame = renderFrame;
+window.READY = false;
+renderFrame(0);
+window.SOUND_EVENTS = soundEvents();
+window.READY = true;
+</script>
+</body>
+</html>
