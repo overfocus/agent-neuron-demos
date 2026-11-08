@@ -1,6 +1,7 @@
 // A level 1 (serve) neuron in a few lines: the hello/ready handshake, then
-// one handler per signal. The handler's result is the reply: undefined is
-// quiet, {payload, to?} an answer. ping is answered; stdin closing ends it.
+// one handler per signal. The handler gets (payload, message) and its result
+// is the reply: undefined is quiet, {payload, to?} an answer. ping is
+// answered; stdin closing ends it.
 import readline from 'node:readline';
 
 export function serve(onSignal, { maxInflight = 1 } = {}) {
@@ -13,7 +14,7 @@ export function serve(onSignal, { maxInflight = 1 } = {}) {
     else if (m.type === 'cancel') send({ type: 'quiet', re: m.re });
     else if (m.type === 'signal') {
       try {
-        const r = await onSignal(m.payload);
+        const r = await onSignal(m.payload, m);
         send(r === undefined ? { type: 'quiet', re: m.re } : { type: 'answer', re: m.re, ...r });
       } catch (e) {
         send({ type: 'error', re: m.re, message: String(e?.message ?? e) });

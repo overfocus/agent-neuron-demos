@@ -101,7 +101,8 @@ Flags that work on every demo with people:
 | `--pace <seconds>` | how long they "read" before each answer (default: a blink); 2 to 4 is watchable |
 | `--open` | open each person's desk page in your browser |
 
-The colony takes `--ants <n>` and `--seconds <s>`; quorum takes `--tie`.
+The colony takes `--ants <n>`, `--seconds <s>` and `--seed <n>` (0 draws a
+fresh map every take); quorum takes `--tie`.
 
 Every run leaves its trace, live stream and stderr under `runs/<demo>/`.
 
@@ -208,13 +209,25 @@ Variant: `--tie`. Lin picks patch-b; Sam's question offers both; Sam says No; no
 4. Kit answers the old one anyway: refused, `410 ... withdrawn`. *A decision does not outlive the situation it was about.*
 5. Kit holds search and rolls back payments; `act` does it.
 
-#### colony (45 s by default)
+#### colony — the video shot list (`--ants 40 --seconds 60 --seed 11`)
 
-`npm run demo colony` (or `-- --ants 40 --seconds 60` for a fuller screen)
+The take to record is the showcase:
 
-1. The 3D view is a map: the nest in the middle with its ants as small dots around it, each food at its real walking distance (the network file gives every neuron its place, `at`), the clock off to one side. No neuron gives orders.
-2. The first seconds: ants walk out and back; a stream of them forms on the near berries as the trail strengthens. Each dot is one ant on one trip, read from the trace, so scrubbing the timeline replays the walking too.
-3. The terminal every 5 s: hunger and the strength of each trail.
-4. A quarter of the way in, a new near patch (honeydew) appears. Explorers find it while the berries trail is still busy.
-5. The berries run out part-way: that link goes dark, and the traffic moves across the map. Usually (four takes in five) it moves to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
-6. The table at the end: deliveries per food per 5 s, and the eager ants (low threshold) doing several times the trips of the reluctant ones.
+```sh
+npm run demo colony -- --ants 40 --seconds 60 --seed 11
+```
+
+(or `npm run watch colony -- --ants 40 --seconds 60 --seed 11` to have the 3D view
+in the same go). The same seed reproduces the same take: the drop schedule, the
+engine's seeded routing and the drumbeat all follow seed 11, so a retake is the
+command again — only the ants' own threshold rolls and their picks run on live
+`Math.random`, so exact delivery counts wobble a little between takes. The
+numbers in parentheses below came from one seed-11 take.
+
+1. The map, nobody in charge. The 3D view opens on the nest, its ants as small dots on a shell around it, every food at its real walking distance (the network file gives each neuron its place, `at`), the clock off to one side. Forty ants, seven patches, one nest — no neuron assigns work.
+2. Trails strengthen as the glow builds. The first returns lay the engine's ground (the network file's `ground` block): links glow toward green with the pheromone on their patch, aged down live as it evaporates. Delivered food is drummed to every ant; watch the nest's answer pulse out along its spokes, and pairs of ants leave together.
+3. The near patch runs dry, the trail goes dark, wasted trips are counted. Berries carries 60 units and the pile-up drains it. The first arrival to find nothing is said once — `berries ran dry at 33 s: 1 wasted trip so far` — and the nest lays −0.5: the glow falls through 0 and the link goes dark while the later arrivals still land there, each one counted (this seed: 42 wasted trips).
+4. Nestmates recruited — pulses along the short ant-ant links. A return whose route the engine draws onto one of the ant's three nearest-ant links reads as a pulse along it, and the idle nestmate takes the same patch at once (the busy one ignores it).
+5. A seeded drop appears, the traffic crosses the map. The three drop sites drawn from seed 11 surface one by one (33.9 s, 35.7 s and 43.3 s under this seed); the first trip that finds one lays its trail, and the drums pull walkers across the map to it (this seed: 10 deliveries drawn from drop-1, 3 from drop-2, 0 from drop-3).
+6. The eager ants do several times the reluctant ones' trips. The report's last table splits per ant: `the eagerest third (threshold 2.0-5.7) averaged 16.0, the most reluctant third (10.3-14.0) 2.8` — thresholds deciding who works, not a scheduler.
+7. The settle line. The report closes on `the colony settled at 63 s on honeydew - every delivery home, hunger at rest.` — the last delivery's second and patch, above the count of ground writes the nest laid.
