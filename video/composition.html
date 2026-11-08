@@ -70,7 +70,8 @@ const GRAIN = (() => {
 const DRY = Object.entries(FACTS.dry ?? {}).map(([id, f]) => ({ id, ...f })).sort((a, b) => a.t - b.t)[0] ?? null;
 const DRY_T = DRY ? DRY.t : RUN_LEN * 1000 * 0.42;
 const SETTLE_T = FACTS.settledT ?? 0;
-const DROP = (FACTS.drops ?? []).filter((x) => x.t > DRY_T + 3000 && x.t < RUN_LEN * 1000 - 6000).sort((a, b) => a.t - b.t)[0] ?? null;
+const DROP = (FACTS.drops ?? []).filter((x) => x.t > DRY_T + 3000 && x.t < RUN_LEN * 1000 - 6000)
+  .sort((a, b) => b.deliveries - a.deliveries || a.t - b.t)[0] ?? null;   // the drop that took the traffic
 const DROP_T = DROP ? DROP.t : RUN_LEN * 1000;
 const clampC = (c) => clamp(c, 0, RUN_LEN * 1000);
 
