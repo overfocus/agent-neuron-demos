@@ -7,3 +7,6 @@ video/frames/
 video/out/
 video/soundtrack.wav
 
+video/frames-peek/
+video/frames-smoke/
+video/sound-events.json

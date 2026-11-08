@@ -69,6 +69,7 @@ const GRAIN = (() => {
 // their neighbourhood covers proportionally more video time.
 const DRY = Object.entries(FACTS.dry ?? {}).map(([id, f]) => ({ id, ...f })).sort((a, b) => a.t - b.t)[0] ?? null;
 const DRY_T = DRY ? DRY.t : RUN_LEN * 1000 * 0.42;
+const SETTLE_T = FACTS.settledT ?? 0;
 const DROP = (FACTS.drops ?? []).filter((x) => x.t > DRY_T + 3000 && x.t < RUN_LEN * 1000 - 6000).sort((a, b) => a.t - b.t)[0] ?? null;
 const DROP_T = DROP ? DROP.t : RUN_LEN * 1000;
 const clampC = (c) => clamp(c, 0, RUN_LEN * 1000);
@@ -85,9 +86,10 @@ function buildSegments() {
   push(2.8, DRY_T + 3500);         // the dry lens (2.3x read)
   push(3.0, DRY_T + 11000);        // traffic moves away
   push(4.6, Math.max(DRY_T + 11001, DROP_T - 6000));   // recruitment
-  push(3.2, Math.max(DRY_T + 11001, DROP_T - 2000));   // approaching the drop
+  push(2.8, Math.max(DRY_T + 11001, DROP_T - 2000));   // approaching the drop
   push(3.0, Math.max(DRY_T + 11001, DROP_T + 6000));   // the drop lens
-  push(6.4, Math.max(DRY_T + 11001, DROP_T + 6001, SETTLE_T)); // rerouted traffic to the settle
+  push(3.6, Math.min(clampC(SETTLE_T), DROP_T + 16000, // rerouted traffic toward the settle
+                     Math.max(DRY_T + 11001, DROP_T + 6001)));
   window.PLAY_END = v;             // the last piece's video end
   return segs;
 }
@@ -333,12 +335,12 @@ function captions(t) {
       `<span class="line">The trail dies. <span class="cyan">The ground remembers.</span></span>`,
       rise(18.0, 18.5, t) * fade(24.4, 25.1, t));
   } else set('cap-dry', '', 0);
-  set('cap-recruit', t > 25.7 && t < 30.2
+  set('cap-recruit', t > 25.6 && t < 30.1
     ? `a returning forager's answer <span class="cyan">recruits idle nestmates</span> — one hop, no manager.`
-    : '', t > 25.7 && t < 30.2 ? rise(25.7, 26.2, t) * fade(29.6, 30.1, t) : 0);
-  if (DROP && t > 30.9 && t < 39.2 && DROP_T < RUN_LEN * 1000) {
+    : '', t > 25.6 && t < 30.1 ? rise(25.6, 26.1, t) * fade(29.5, 30.0, t) : 0);
+  if (DROP && t > 30.2 && t < 39.1 && DROP_T < RUN_LEN * 1000) {
     set('cap-drop', `<span class="line">a drop, seeded: <span class="cyan">${DROP.id}</span> at t = ${fmt(DROP_T / 1000, 0)} s.</span><span class="line dim">same seed, same take.</span>`,
-      rise(30.9, 31.4, t) * fade(38.4, 39.1, t));
+      rise(30.2, 30.7, t) * fade(38.3, 39.0, t));
   } else set('cap-drop', '', 0);
   if (t > 39.7 && t < 43.5) {
     set('cap-labour', `the eager third: <span class="accent">${fmt(FACTS.eagerAvg ?? 0, 1)}</span> trips an ant.<br>` +
@@ -448,3 +450,6 @@ window.READY = false;
 renderFrame(0);
 window.SOUND_EVENTS = soundEvents();
 window.READY = true;
+</script>
+</body>
+</html>
