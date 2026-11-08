@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { answer, state } from '../../lib/desk.mjs';
+import { play } from '../../lib/desk.mjs';
 import { runDir } from '../../lib/engine.mjs';
 import { deskLine, printTable } from '../../lib/narrate.mjs';
 import { payloadText, startRun } from '../../lib/run.mjs';
@@ -59,21 +59,14 @@ export async function main({ headless = false, say = console.log } = {}) {
   await run.desk;
   printTable(run, say);
   if (headless) {
-    const seat = run.people.sam.seat;
-    const seen = new Set();
-    for (;;) {
-      const s = await state(seat);
-      if (!s || s.over) break;
-      const it = s.items.find((i) => i.status === 'waiting' && i.yours && !seen.has(i.id));
-      if (!it) {
-        await new Promise((r) => setTimeout(r, 100));
-        continue;
-      }
-      seen.add(it.id);
-      const id = it.payload.title.split(':')[0];
-      const pick = data.headless[id] ?? { choose: 'deny' };
-      await answer(seat, { item: it.id, kind: 'choose', option: pick.choose, why: pick.why });
-    }
+    await play(
+      run.people.sam.seat,
+      (it) => {
+        const pick = data.headless[it.payload.title.split(':')[0]] ?? { choose: 'deny' };
+        return { kind: 'choose', option: pick.choose, why: pick.why };
+      },
+      () => run.exited,
+    );
   }
   await run.done;
 

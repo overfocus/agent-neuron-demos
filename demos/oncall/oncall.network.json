@@ -1,0 +1,16 @@
+{
+  "version": 0,
+  "name": "oncall",
+  "description": "On-call: each alert, keyed by its service, gets a proposed remediation from a triage agent and goes to the on-call person. A newer alert for the same service makes the waiting ask stale: the desk withdraws it, an answer to it is refused, and the new ask takes its place. Decisions do not outlive the situation they were about.",
+  "neurons": [
+    { "id": "alerts", "description": "Alerts, keyed by service: a newer one replaces an older one for the same service.", "source": true },
+    { "id": "triage", "description": "The triage agent: proposes one remediation per alert.", "run": ["node", "neurons/triage.mjs"] },
+    { "id": "oncall", "description": "Kit, on call: do it, or hold.", "human": true, "timeout": 1800000 },
+    { "id": "act", "description": "Carries out the call. An effect.", "run": ["node", "neurons/act.mjs"], "env": ["DEMO_DIR"], "effect": true }
+  ],
+  "links": [
+    { "from": "alerts", "to": "triage" },
+    { "from": "triage", "to": "oncall" },
+    { "from": "oncall", "to": "act" }
+  ]
+}

@@ -1,0 +1,3 @@
+{"at": 0, "source": "alerts", "replaces": "payments", "payload": {"service": "payments", "alert": "p95 latency over 2 s", "seen": "02:14", "proposal": "restart payments-api"}}
+{"at": 400, "source": "alerts", "replaces": "search", "payload": {"service": "search", "alert": "disk 91% full", "seen": "02:14", "proposal": "clear the search cache"}}
+{"at": 4000, "source": "alerts", "replaces": "payments", "payload": {"service": "payments", "alert": "error rate 12% since deploy 2026.11.08-3", "seen": "02:18", "proposal": "roll back deploy 2026.11.08-3"}}

@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { answer, state } from '../../lib/desk.mjs';
+import { play } from '../../lib/desk.mjs';
 import { runDir } from '../../lib/engine.mjs';
 import { deskLine, printTable } from '../../lib/narrate.mjs';
 import { payloadText, startRun } from '../../lib/run.mjs';
@@ -39,19 +39,8 @@ function writeInputs(file, data) {
 
 const idOf = (item) => item.payload?.title?.match(/^((?:BUG|REQ|ARCH)-\d+)/)?.[1];
 
-/** One invented person answering their own items by the data's headless section. */
-async function play(run, who, policy, say) {
-  const seat = run.people[who].seat;
-  const done = new Set();
-  for (;;) {
-    const s = await state(seat);
-    if (!s || s.over) return;
-    const it = s.items.find((i) => i.status === 'waiting' && i.yours && !done.has(i.id));
-    if (!it) {
-      await new Promise((r) => setTimeout(r, 120));
-      continue;
-    }
-    done.add(it.id);
+/** What one invented person decides on an item, by the data's headless section. */
+function decide(who, policy, it) {
     const id = idOf(it);
     let pick = { choose: 'accept' };
     if (it.neuron === 'lead-bugs') pick = policy.bugs[id] ?? { choose: 'rework' };
@@ -61,10 +50,7 @@ async function play(run, who, policy, say) {
       const p = policy.architecture[id]?.[who];
       pick = typeof p === 'string' ? { choose: p } : (p ?? { choose: 'accept' });
     }
-    await new Promise((r) => setTimeout(r, 250)); // a person reads before answering
-    const r = await answer(seat, { item: it.id, kind: 'choose', option: pick.choose, why: pick.why });
-    if (r.status !== 200) say(`(${who} could not answer ${it.id}: ${r.json?.error ?? r.status})`);
-  }
+    return { kind: 'choose', option: pick.choose, why: pick.why };
 }
 
 export async function main({ headless = false, say = console.log } = {}) {
@@ -96,7 +82,9 @@ export async function main({ headless = false, say = console.log } = {}) {
   });
   await run.desk;
   printTable(run, say);
-  if (headless) await Promise.all(['ada', 'lin', 'sam'].map((w) => play(run, w, data.headless, say)));
+  if (headless) {
+    await Promise.all(['ada', 'lin', 'sam'].map((w) => play(run.people[w].seat, (it) => decide(w, data.headless, it), () => run.exited, { readMs: 250 })));
+  }
   const { code } = await run.done;
 
   const landed = fs.existsSync(path.join(dir, 'landed.jsonl'))
