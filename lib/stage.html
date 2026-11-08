@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-neuron stage</title>
+<style>
+  :root { color-scheme: dark; --bg: #000; --line: #1f2937; --text: #e5e7eb; --muted: #9ca3af; --green: #39ff00; --cyan: #06b6d4; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, "Helvetica Neue", Arial, sans-serif;
+         display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; align-items: baseline; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0; color: var(--green); letter-spacing: .02em; }
+  #title { color: var(--text); }
+  #state { color: var(--muted); margin-left: auto; font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 34%); min-height: 0; }
+  main.solo { grid-template-columns: minmax(0, 1fr); }
+  main.solo #desks { display: none; }
+  #viz { width: 100%; height: 100%; border: 0; border-right: 1px solid var(--line); }
+  #desks { display: flex; flex-direction: column; min-height: 0; }
+  .desk { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
+  .desk h2 { margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--cyan); border-bottom: 1px solid var(--line); }
+  .desk h2 span { color: var(--muted); font-weight: normal; }
+  .desk iframe { flex: 1; width: 100%; border: 0; background: #000; }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+    .desk { min-height: 60vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>agent-neuron</h1>
+  <span id="title">waiting for a demo run</span>
+  <span id="state" role="status"></span>
+</header>
+<main id="main" class="solo">
+  <iframe id="viz" src="@VIZ@" title="The network in 3D"></iframe>
+  <section id="desks" aria-label="Each person's desk"></section>
+</main>
+<script>
+"use strict";
+let started = null;
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+async function poll() {
+  try {
+    const m = await (await fetch("/current", { cache: "no-store" })).json();
+    if (m.started && m.started !== started) {
+      started = m.started;
+      document.getElementById("title").textContent = m.title || m.demo;
+      const people = m.people || [];
+      const desks = document.getElementById("desks");
+      desks.textContent = "";
+      for (const p of people) {
+        const box = el("div", "desk");
+        const h = el("h2", null, p.name + " ");
+        h.appendChild(el("span", null, (p.roles || []).join(", ")));
+        box.appendChild(h);
+        const f = el("iframe");
+        f.title = p.name + "'s desk";
+        f.src = p.url;
+        box.appendChild(f);
+        desks.appendChild(box);
+      }
+      document.getElementById("main").classList.toggle("solo", people.length === 0);
+    }
+    document.getElementById("state").textContent = m.started ? (m.ended ? "done" : "running") : "";
+  } catch (e) {
+    document.getElementById("state").textContent = "the stage server is not answering";
+  }
+  setTimeout(poll, 700);
+}
+poll();
+</script>
+</body>
+</html>

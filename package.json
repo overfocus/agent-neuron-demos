@@ -5,9 +5,13 @@
   "description": "Demos of agent-neuron's decision surface: people and agents deciding together on the engine's desk, watched in agent-neuron-viz.",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "demo": "node bin/demo.mjs",
+    "doctor": "node bin/doctor.mjs",
+    "stage": "node bin/stage.mjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "check": "node --test --test-concurrency=1 test/*.test.mjs"
   }

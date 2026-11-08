@@ -8,6 +8,9 @@ people decide on the engine's desk, each with their own link, with every
 answer recorded with who and why. Watch any of them in 3D with
 [agent-neuron-viz](https://github.com/overfocus/agent-neuron-viz).
 
+**New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md)**: setup in
+five minutes, your first demo, and a shot list per demo for recording them.
+
 Everything here is invented: the people (Ada, Lin, Sam, Kit), the harbour
 booking app, the patches, the refunds. The agents are small scripts that
 return canned work. The decisions about that work are real: they are made on
@@ -41,6 +44,8 @@ npm run demo quorum                   # prints a desk link per person: open them
 npm run demo quorum -- --headless     # the invented people answer through the same desk API
 npm run demo backlog -- --headless
 npm run demo colony -- --ants 40 --seconds 60
+npm run demo backlog -- --headless --pace 3   # watchable speed, for recording
+npm run stage                         # one page to record from: the 3D view and every desk
 npm test                              # every demo headless, its outcome asserted
 ```
 

@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { answer, nextItem } from '../../lib/desk.mjs';
+import { answer, nextItem, pause } from '../../lib/desk.mjs';
 import { runDir } from '../../lib/engine.mjs';
 import { deskLine, printTable } from '../../lib/narrate.mjs';
 import { startRun } from '../../lib/run.mjs';
@@ -109,6 +109,7 @@ export async function main({ headless = false, say = console.log } = {}) {
   printTable(review, say);
   if (headless) {
     const it = await nextItem(review.people.sam.seat);
+    await pause();
     if (it) await answer(review.people.sam.seat, { item: it.id, kind: 'choose', option: 'nine', why: 'nothing finished above 9; cap the runaways' });
   }
   await review.done;

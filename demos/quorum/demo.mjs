@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { answer, nextItem } from '../../lib/desk.mjs';
+import { answer, nextItem, pause } from '../../lib/desk.mjs';
 import { runDir } from '../../lib/engine.mjs';
 import { deskLine, printTable } from '../../lib/narrate.mjs';
 import { payloadText, startRun } from '../../lib/run.mjs';
@@ -52,6 +52,7 @@ export async function main({ headless = false, flags = [], say = console.log } =
     const { ada, lin, sam } = run.people;
     const choose = async (who, option, why) => {
       const it = await nextItem(who.seat);
+      await pause();
       if (it) await answer(who.seat, { item: it.id, kind: 'choose', option, why });
     };
     await choose(ada, 'a', 'the tide is the real constraint');
@@ -59,8 +60,10 @@ export async function main({ headless = false, flags = [], say = console.log } =
     await choose(lin, tie ? 'b' : 'a', tie ? 'a fixed time is easier to publish' : 'agreed, and it changes less');
     const gate = await nextItem(sam.seat, (i) => i.neuron === 'lead');
     if (gate) {
+      await pause();
       const bad = await answer(lin.seat, { item: gate.id, kind: 'no' });
       say(`(Lin tried to answer the lead's gate: ${bad.status} ${bad.json?.error ?? ''})`);
+      await pause();
       if (tie) await answer(sam.seat, { item: gate.id, kind: 'no', why: 'no consensus; both back to the agents' });
       else await answer(sam.seat, { item: gate.id, kind: 'choose', option: gate.payload.options[0].id, why: 'reviewed the diff' });
     }

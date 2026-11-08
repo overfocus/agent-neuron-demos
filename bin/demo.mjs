@@ -14,13 +14,17 @@ const names = fs
 const [name, ...flags] = process.argv.slice(2);
 if (!name || !names.includes(name)) {
   if (name) console.log(`no demo called ${name}\n`);
-  console.log('npm run demo <name> [-- --headless]\n');
+  console.log('npm run demo <name> [-- --headless] [--pace <seconds>] [--open]\n');
   for (const n of names) {
     const { meta } = await import(pathToFileURL(path.join(DEMOS, n, 'demo.mjs')).href);
     console.log(`  ${n.padEnd(10)} ${meta.title}${meta.variants?.length ? `  [${meta.variants.join(' ')}]` : ''}`);
   }
   process.exit(name ? 2 : 0);
 }
+// --pace <seconds>: the invented people read this long before each answer.
+const pace = flags.indexOf('--pace');
+if (pace >= 0) process.env.DEMO_PACE_MS = String(Math.round(Number(flags[pace + 1] ?? 3) * 1000));
+if (flags.includes('--open')) process.env.DEMO_OPEN = '1';
 const mod = await import(pathToFileURL(path.join(DEMOS, name, 'demo.mjs')).href);
 const result = await mod.main({ headless: flags.includes('--headless'), flags });
 process.exit(result?.code ?? 0);

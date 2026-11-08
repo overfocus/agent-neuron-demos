@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { answer, nextItem, play } from '../../lib/desk.mjs';
+import { answer, nextItem, pause, play } from '../../lib/desk.mjs';
 import { runDir } from '../../lib/engine.mjs';
 import { deskLine, printTable } from '../../lib/narrate.mjs';
 import { payloadText, startRun } from '../../lib/run.mjs';
@@ -51,6 +51,7 @@ export async function main({ headless = false, say = console.log } = {}) {
     say(`(Kit opens "${first.payload.title}" and starts reading the dashboards...)`);
     // Kit reads until the newer payments ask is on the desk.
     await nextItem(seat, (i) => i.id !== first.id && i.payload.title.startsWith('payments'));
+    await pause();
     late = await answer(seat, { item: first.id, kind: 'choose', option: 'do', why: 'latency, restart it' });
     say(`(Kit answers the first payments ask anyway: ${late.status} ${late.json?.error ?? ''})`);
     await play(
