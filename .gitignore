@@ -2,3 +2,8 @@ node_modules/
 runs/
 .DS_Store
 .claude/settings.local.json
+video/.venv/
+video/frames/
+video/out/
+video/soundtrack.wav
+

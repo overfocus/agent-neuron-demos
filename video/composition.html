@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>colony — rendered</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050607; overflow: hidden; }
+  #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  .cap { position: absolute; left: 120px; right: 620px; color: #e8f4ec;
+         font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+         font-weight: 700; letter-spacing: -0.01em; opacity: 0; will-change: opacity; }
+  .cap .accent { color: #59f77c; }
+  .cap .cyan { color: #4ad6ff; }
+  .cap .dim { color: #8fa89a; font-weight: 600; }
+  .cap.dim2 { color: #8fa89a; }
+  #endcard { position: absolute; inset: 0; display: flex; flex-direction: column;
+             justify-content: center; align-items: flex-start; padding: 0 160px; opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<div style="position:absolute; inset:0; pointer-events:none">
+  <div class="cap" id="cap-hook"    style="top: 330px; font-size: 92px; line-height: 1.2;"></div>
+  <div class="cap" id="cap-map"     style="top: 880px; font-size: 38px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-trails"  style="top: 858px; font-size: 46px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-dry"     style="top: 120px; font-size: 60px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-recruit" style="top: 862px; font-size: 44px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-drop"    style="top: 120px; font-size: 58px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-labour"  style="top: 120px; font-size: 46px; line-height: 1.3; right: 980px;"></div>
+  <div class="cap" id="cap-settle"  style="top: 928px; font-size: 42px; line-height: 1.3;"></div>
+  <div id="endcard"></div>
+</div>
+<script>
+  // The rendered colony: every scene is a function of time. renderFrame(t) draws
+  // exactly what the screen shows at t seconds, from the frozen run data — so
+  // every frame comes out the same each render. No Math.random, no clock, no
+  // network: t in, picture out.
+  const Q = new URLSearchParams(location.search);
+  document.write(`<script src="${Q.get('data') ?? 'data.js'}"><\/script>`);
+</script>
+<script>
+'use strict';
+const D = window.COLONY;
+const CFG = { fps: 60, evap: D.evap ?? 0.25, base: D.base ?? 0.05, power: D.power ?? 2 };
+const FACTS = D.facts ?? {};
+const RUN_LEN = D.seconds ?? 45;
+
+// ---------- small pure helpers ----------
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const win = (a, b, t) => { const u = clamp((t - a) / Math.max(1e-9, b - a), 0, 1); return u * u * (3 - 2 * u); };
+const rise = (a, b, t) => win(a, b, t);
+const fade = (a, b, t) => 1 - win(a, b, t);
+const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+
+// Deterministic grain (the one PRNG in the file, seeded once, sampled once).
+const GRAIN = (() => {
+  const rnd = ((a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; })(1);
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const g = c.getContext('2d'), img = g.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 118 + Math.floor(rnd() * 18); img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 10; }
+  g.putImageData(img, 0, 0); return c;
+})();
+
+// ---------- the timeline, built from the run's own facts ----------
+// Playback pieces: (v0, v1) video seconds, (c0, c1) colony milliseconds, each a
+// linear stretch of colony time. The dry moment and the drop get a slow lens:
+// their neighbourhood covers proportionally more video time.
+const DRY = Object.entries(FACTS.dry ?? {}).map(([id, f]) => ({ id, ...f })).sort((a, b) => a.t - b.t)[0] ?? null;
+const DRY_T = DRY ? DRY.t : RUN_LEN * 1000 * 0.42;
+const DROP = (FACTS.drops ?? []).filter((x) => x.t > DRY_T + 3000 && x.t < RUN_LEN * 1000 - 6000).sort((a, b) => a.t - b.t)[0] ?? null;
+const DROP_T = DROP ? DROP.t : RUN_LEN * 1000;
+const clampC = (c) => clamp(c, 0, RUN_LEN * 1000);
+
+function buildSegments() {
+  const segs = [];
+  let v = 8.6, c = 0;
+  const push = (dv, c1) => {
+    c1 = clampC(c1);
+    if (c1 > c + 1 && dv > 0.4) { segs.push({ v0: v, v1: v + dv, c0: c, c1 }); v += dv; c = c1; }
+  };
+  push(7.8, DRY_T - 7000);         // trails form (≈1x)
+  push(3.2, DRY_T - 2500);         // approaching the dry second
+  push(2.8, DRY_T + 3500);         // the dry lens (2.3x read)
+  push(3.0, DRY_T + 11000);        // traffic moves away
+  push(4.6, Math.max(DRY_T + 11001, DROP_T - 6000));   // recruitment
+  push(3.2, Math.max(DRY_T + 11001, DROP_T - 2000));   // approaching the drop
+  push(3.0, Math.max(DRY_T + 11001, DROP_T + 6000));   // the drop lens
+  push(6.4, Math.max(DRY_T + 11001, DROP_T + 6001, SETTLE_T)); // rerouted traffic to the settle
+  window.PLAY_END = v;             // the last piece's video end
+  return segs;
+}
+const SEG = buildSegments();
+const PLAY_END = window.PLAY_END;
+
+function colonyT(vt) {
+  if (vt < SEG[0].v0) return 0;
+  for (const s of SEG) if (vt <= s.v1) {
+    const u = clamp((vt - s.v0) / (s.v1 - s.v0), 0, 1);
+    return lerp(s.c0, s.c1, u);
+  }
+  return SEG[SEG.length - 1].c1;
+}
+const videoT = (ct) => {                    // the inverse, for sound placement
+  for (const s of SEG) if (ct < s.c1) return lerp(s.v0, s.v1, (ct - s.c0) / (s.c1 - s.c0));
+  return SEG[SEG.length - 1].v1;
+};
+window.mapColonyToVideo = videoT;
+
+// ---------- the world's read model (pure functions of colony time) ----------
+const PLACE_GROUND = new Map();
+for (const g of (D.ground ?? [])) {
+  if (!PLACE_GROUND.has(g.place)) PLACE_GROUND.set(g.place, []);
+  PLACE_GROUND.get(g.place).push({ t: g.t, v: g.v });
+}
+for (const arr of PLACE_GROUND.values()) arr.sort((a, b) => a.t - b.t);
+function strength(place, ct) {              // aged at the read, entry never mutated
+  const arr = PLACE_GROUND.get(place);
+  if (!arr) return 0;
+  let last = null;
+  for (const e of arr) { if (e.t <= ct) last = e; else break; }
+  return last ? last.v * Math.exp(-CFG.evap * (ct - last.t) / 1000) : 0;
+}
+const weight = (place, ct) => Math.max(0, CFG.base + strength(place, ct)) ** CFG.power;
+
+const FOOD = Object.fromEntries(D.foods.map((f) => [f.id, f]));
+const STOCK = {};                           // per food: [ {t, left} ] for the read
+for (const d of (D.deliveries ?? [])) {
+  if (d.left == null) continue;
+  (STOCK[d.food] ??= []).push({ t: d.t, left: d.left });
+}
+function stock(foodId, ct) {
+  const arr = STOCK[foodId];
+  if (!arr || !arr.length) return FOOD[foodId].total;
+  let left = FOOD[foodId].total;
+  for (const s of arr) { if (s.t <= ct) left = s.left; else break; }
+  return left;
+}
+
+function flight(antId, ct) {                // null (idle) or {u, food, carrying}
+  let next = null;
+  for (const d of D.deliveries) {
+    if (d.ant !== antId) continue;
+    const sp = Math.max(120, FOOD[d.food]?.dist ?? 400);
+    const t0 = Math.max(0, d.t - 2 * sp - 40);
+    if (ct < t0) return null;               // a later trip, not yet
+    if (d.t <= ct) continue;                // home already
+    const f = FOOD[d.food];
+    if (ct < t0 + sp) return { u: (ct - t0) / sp, food: f, carrying: false };
+    return { u: 1 - (ct - t0 - sp) / sp, food: f, carrying: true };
+  }
+  return next;
+}
+
+// ---------- geometry ----------
+const CX = 960, CY = 548, S = 0.62;
+const px = (p) => [CX + p[0] * S, CY - p[1] * S];
+const nestAt = px(D.nest.at);
+const antHome = Object.fromEntries(D.ants.map((a) => [a.id, px(a.at)]));
+
+// ---------- palette ----------
+const BG = '#050607', INK = '#e8f4ec';
+const GREEN = '#59f77c', CYAN = '#4ad6ff', RED = '#ff6f59', DEAD = '#5b6a63';
+const FOOD_HUE = (id) => (id === 'berries' ? '#ff6f9d' : id === 'seeds' ? '#e6d27a'
+  : id === 'carcass' ? '#b8a4ff' : id === 'honeydew' ? '#8ef7b2' : id.startsWith('drop') ? '#4ad6ff' : '#8ef7b2');
+
+// ---------- the canvas ----------
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const grainPat = ctx.createPattern(GRAIN, 'repeat');
+const FONT = (w, px2) => `${w} ${px2}px -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+
+function drawBase(t) {
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, 1920, 1080);
+  for (const r of [400, 800, 1200]) {
+    ctx.beginPath(); ctx.arc(nestAt[0], nestAt[1], r * S, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(120,150,135,0.10)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(120,150,135,0.30)'; ctx.font = FONT(600, 16);
+    ctx.fillText(`${fmt(r / 1000, 1)} s of ant-walk`, nestAt[0], nestAt[1] - r * S - 8);
+  }
+}
+
+function drawTrail(food, ct) {
+  const [fx, fy] = px(food.at), st = strength(food.id, ct), wgt = weight(food.id, ct);
+  const glow = 1 - Math.exp(-0.55 * clamp(wgt, 0, 14));
+  const dead = st < -0.05;
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(nestAt[0], nestAt[1]); ctx.lineTo(fx, fy);
+  ctx.lineWidth = 2 + 7.5 * glow;
+  ctx.setLineDash(dead ? [4, 9] : []);
+  ctx.strokeStyle = dead ? DEAD : `rgba(89,247,124,${(0.15 + 0.66 * glow).toFixed(3)})`;
+  ctx.shadowColor = dead ? 'rgba(91,106,99,0.45)' : `rgba(89,247,124,${(0.75 * glow).toFixed(3)})`;
+  ctx.shadowBlur = dead ? 6 : 15 * glow;
+  ctx.stroke(); ctx.restore();
+}
+
+function drawFood(food, t, ct, ghost) {
+  const [fx, fy] = px(food.at);
+  const a = ghost ? (food.appearMs > 0 ? 0.35 : 1) * rise(food._popV, food._popV + 0.55, t)
+                  : (food.appearMs > 0 ? win(food.appearMs - 700, food.appearMs + 1100, ct) : 1);
+  if (a <= 0) return;
+  const st = stock(food.id, ct);
+  const filled = st > 0 ? Math.max(0.04, Math.min(1, st / food.total)) : 0;
+  const hue = FOOD_HUE(food.id);
+  ctx.save(); ctx.globalAlpha = a;
+  if (st > 0) {
+    ctx.beginPath(); ctx.moveTo(fx, fy);
+    ctx.arc(fx, fy, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * filled); ctx.closePath();
+    ctx.fillStyle = hue; ctx.globalAlpha = 0.8 * a; ctx.fill(); ctx.globalAlpha = a;
+  }
+  ctx.beginPath(); ctx.arc(fx, fy, 16, 0, Math.PI * 2);
+  ctx.strokeStyle = st <= 0 ? RED : 'rgba(232,244,236,0.55)'; ctx.lineWidth = 2; ctx.stroke();
+  if (st <= 0) {
+    ctx.beginPath(); ctx.moveTo(fx - 9, fy - 9); ctx.lineTo(fx + 9, fy + 9);
+    ctx.moveTo(fx + 9, fy - 9); ctx.lineTo(fx - 9, fy + 9);
+    ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.stroke();
+  }
+  ctx.fillStyle = ghost && food.appearMs > 0 ? 'rgba(74,214,255,0.9)' : INK; ctx.font = FONT(700, 19);
+  ctx.fillText(food.id, fx - 4, fy - 30);
+  ctx.fillStyle = 'rgba(143,168,154,0.8)'; ctx.font = FONT(600, 15);
+  ctx.fillText(st > 0 ? `${st} left · ${fmt(food.dist / 1000, 1)} s` : `dry · ${fmt(food.dist / 1000, 1)} s`, fx - 4, fy + 44);
+  if (food.appearMs > 0) { ctx.fillStyle = CYAN; ctx.font = FONT(700, 15); ctx.fillText('drop', fx - 4, fy - 52); }
+  ctx.restore();
+}
+
+function drawAnt(t, a, ct) {
+  const [ax, ay] = antHome[a.id];
+  let x = ax, y = ay, carrying = '', loadHue = '';
+  const f = flight(a.id, ct);
+  if (f) {
+    const [fx, fy] = px(f.food.at);
+    loadHue = FOOD_HUE(f.food.id);
+    if (f.carrying) { x = lerp(fx, nestAt[0], f.u); y = lerp(fy, nestAt[1], f.u); carrying = 'c'; }
+    else { x = lerp(nestAt[0], fx, f.u); y = lerp(nestAt[1], fy, f.u); }
+  }
+  ctx.beginPath(); ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+  ctx.fillStyle = carrying ? CYAN : GREEN;
+  ctx.shadowColor = carrying ? 'rgba(74,214,255,0.9)' : 'rgba(89,247,124,0.5)';
+  ctx.shadowBlur = carrying ? 11 : 3; ctx.fill(); ctx.shadowBlur = 0;
+  if (carrying) { ctx.beginPath(); ctx.arc(x, y - 6, 2.3, 0, Math.PI * 2); ctx.fillStyle = loadHue; ctx.fill(); }
+}
+
+function drawPulses(ct) {
+  for (const r of (D.recruits ?? [])) {
+    if (!r.food && !r.to?.length) continue;
+    const age = (ct - r.t) / 1000;
+    if (age < 0 || age > 0.8) continue;
+    const k = age / 0.8;
+    for (const to of (r.to ?? [])) {
+      const home = antHome[to];
+      if (!home) continue;
+      ctx.beginPath(); ctx.arc(home[0], home[1], 4 + 26 * k, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(74,214,255,${(0.55 * (1 - k)).toFixed(3)})`; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+  }
+}
+
+function drawHunger(ct) {
+  const [hx, hy] = [1668, 128], h = hungerAt(ct), u = clamp(h / 20, 0, 1);
+  ctx.strokeStyle = 'rgba(143,168,154,0.35)'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(hx, hy, 46, Math.PI * 0.75, Math.PI * 2.25); ctx.stroke();
+  ctx.strokeStyle = GREEN; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(hx, hy, 46, Math.PI * 0.75, Math.PI * 0.75 + Math.PI * 1.5 * u); ctx.stroke();
+  ctx.fillStyle = INK; ctx.font = FONT(700, 19); ctx.fillText('hunger', hx - 32, hy + 84);
+  ctx.fillStyle = 'rgba(143,168,154,0.85)'; ctx.font = FONT(600, 17);
+  ctx.fillText(`t = ${fmt(ct / 1000, 0)} s`, hx - 28, hy - 74);
+}
+
+function hungerAt(ct) {
+  if (!hungerAt.table) {
+    const table = []; let h = 6;
+    const step = D.tickMs ?? 250;
+    for (let ms = 0; ms <= (RUN_LEN + 3) * 1000; ms += step) {
+      table.push({ t: ms, h: Math.min(20, h) });
+      const next = ms + step;
+      h = Math.min(20, h + 0.5);
+      for (const d of D.deliveries) if (d.t >= ms && d.t < next) h = Math.max(0, h - 1);
+    }
+    hungerAt.table = table;
+  }
+  let v = 6;
+  for (const p of hungerAt.table) { if (p.t <= ct) v = p.h; else break; }
+  return v;
+}
+
+function drawBars(t) {
+  const trips = D.ants.map((a) => D.deliveries.filter((d) => d.ant === a.id).length);
+  const max = Math.max(1, ...trips);
+  const third = FACTS.third ?? Math.max(1, Math.floor(D.ants.length / 3));
+  const n = D.ants.length, gap = (1920 - 240) / n, bw = Math.min(44, gap - 8);
+  for (let i = 0; i < n; i++) {
+    const x = 120 + i * gap;
+    const h = 330 * (trips[i] / max) * rise(39.8 + i * 0.015, 40.35 + i * 0.015, t);
+    const eager = i < third, reluctant = i >= n - third;
+    ctx.fillStyle = eager ? 'rgba(89,247,124,0.95)' : reluctant ? 'rgba(143,168,154,0.5)' : 'rgba(89,247,124,0.4)';
+    ctx.fillRect(x, 810 - h, bw, h);
+    ctx.fillStyle = 'rgba(232,244,236,0.8)'; ctx.font = FONT(600, 15);
+    if (n <= 40 || i % 2 === 0) ctx.fillText(String(trips[i]), x, 810 - h - 10);
+    ctx.fillStyle = 'rgba(143,168,154,0.65)'; ctx.font = FONT(500, 14);
+    ctx.fillText(`θ${fmt(D.ants[i].theta, 0)}`, x, 828);
+  }
+  ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(600, 21);
+  ctx.fillText('trips per ant, by response threshold — eager left, reluctant right', 120, 866);
+}
+
+// ---------- captions: pure functions of video t ----------
+function set(id, html, o) {
+  const el = document.getElementById(id);
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.style.opacity = clamp(o, 0, 1).toFixed(3);
+  el.style.transform = `translateY(${((1 - clamp(o, 0, 1)) * 14).toFixed(1)}px)`;
+}
+function captions(t) {
+  const n = D.ants.length, m = D.foods.length;
+  if (t < 3.4) {
+    const L = [[0.30, `<span class="line">${n} ants.</span>`],
+               [0.95, `<span class="line">${m} patches of food.</span>`],
+               [1.60, `<span class="line"><span class="dim">one nest.</span></span>`],
+               [2.35, `<span class="line accent">No one in charge.</span>`]];
+    let shown = L[0][1];
+    for (const [a, h] of L) if (t >= a) shown = h;
+    set('cap-hook', shown, t < 3.0 ? rise(0.22, 0.6, t) : fade(3.0, 3.35, t));
+  } else set('cap-hook', '', 0);
+  set('cap-map', t > 5.5 && t < 9.0
+    ? `<span class="dim">the map the network file draws — every neuron has an <span class="cyan">at</span>, every trip the engine traces</span>`
+    : '', t > 5.5 && t < 9.0 ? rise(5.5, 6.0, t) * fade(8.55, 8.95, t) : 0);
+  set('cap-trails', t > 9.6 && t < 16.2
+    ? `hunger rises. Each ant passes <span class="accent">its own threshold</span> — and goes.`
+    : '', t > 9.6 && t < 16.2 ? rise(9.6, 10.1, t) * fade(15.5, 16.1, t) : 0);
+  if (DRY && t > 18.0 && t < 25.2 && DRY_T < 30000) {
+    set('cap-dry', `<span class="line">${DRY.id} ran dry at ${fmt(DRY_T / 1000, 0)} s.</span>` +
+      `<span class="line">The trail dies. <span class="cyan">The ground remembers.</span></span>`,
+      rise(18.0, 18.5, t) * fade(24.4, 25.1, t));
+  } else set('cap-dry', '', 0);
+  set('cap-recruit', t > 25.7 && t < 30.2
+    ? `a returning forager's answer <span class="cyan">recruits idle nestmates</span> — one hop, no manager.`
+    : '', t > 25.7 && t < 30.2 ? rise(25.7, 26.2, t) * fade(29.6, 30.1, t) : 0);
+  if (DROP && t > 30.9 && t < 39.2 && DROP_T < RUN_LEN * 1000) {
+    set('cap-drop', `<span class="line">a drop, seeded: <span class="cyan">${DROP.id}</span> at t = ${fmt(DROP_T / 1000, 0)} s.</span><span class="line dim">same seed, same take.</span>`,
+      rise(30.9, 31.4, t) * fade(38.4, 39.1, t));
+  } else set('cap-drop', '', 0);
+  if (t > 39.7 && t < 43.5) {
+    set('cap-labour', `the eager third: <span class="accent">${fmt(FACTS.eagerAvg ?? 0, 1)}</span> trips an ant.<br>` +
+      `the reluctant third: ${fmt(FACTS.reluctantAvg ?? 0, 1)}. <span class="accent">≈${fmt(FACTS.ratio ?? 0, 1)}×</span> more.`,
+      rise(39.7, 40.2, t) * fade(42.7, 43.4, t));
+    set('cap-settle', `the colony settled at <span class="accent">${fmt(Math.max(SETTLE_T, SEG[SEG.length - 1].c1) / 1000, 0)} s</span> on ${FACTS.won ?? ''}. <span class="dim">every trip on the record.</span>`,
+      rise(41.6, 42.1, t) * fade(42.9, 43.4, t));
+  } else { set('cap-labour', '', 0); set('cap-settle', '', 0); }
+  const ec = document.getElementById('endcard');
+  if (t > 43.5) {
+    ec.style.opacity = rise(43.5, 44.0, t).toFixed(3);
+    if (ec.dataset.h !== 'e') {
+      ec.dataset.h = 'e';
+      ec.innerHTML = `
+        <div class="cap" style="position:static; opacity:1; font-size:74px">agent-neuron</div>
+        <div class="cap" style="position:static; opacity:1; font-size:40px; margin-top:14px"><span class="accent">no scheduler.</span> the graph is the referee.</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:29px; margin-top:44px">${FACTS.deliveries ?? 0} deliveries · every trip a trace event · the map the file draws</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:25px; margin-top:10px">decision 0012 — the ground: trails as engine state · picture and sound rendered</div>`;
+    }
+  } else if (t < 43.3) { if (ec.dataset.h) { ec.dataset.h = ''; ec.style.opacity = '0'; ec.innerHTML = ''; } }
+}
+
+// ---------- one frame ----------
+window.VIDEO_SECONDS = 46.4;
+
+function renderFrame(t) {
+  for (let i = 0; i < D.foods.length; i++) D.foods[i]._popV = 5.4 + (i % 4) * 0.22;
+  const inPlay = t >= SEG[0].v0 && t < PLAY_END;
+  const ct = inPlay ? colonyT(t) : 0;
+
+  drawBase(t);
+  if (t < 8.6) {
+    for (const f of D.foods) drawTrail(f, ct);
+    for (const f of D.foods) drawFood(f, t, ct, true);
+    const k = clamp((t - 4.2) / 1.6, 0, 1);
+    D.ants.forEach((a, i) => {
+      const [ax, ay] = antHome[a.id];
+      const kk = rise(4.2 + (i % 24) * 0.05, 4.6 + (i % 24) * 0.05, t);
+      if (kk <= 0) return;
+      ctx.beginPath(); ctx.arc(ax, ay, 3.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(89,247,124,${(0.9 * kk).toFixed(3)})`; ctx.fill();
+    });
+    ctx.beginPath(); ctx.arc(nestAt[0], nestAt[1], 13 * win(0.4, 0.8, t), 0, Math.PI * 2);
+    ctx.fillStyle = INK; ctx.shadowColor = 'rgba(232,244,236,0.7)'; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(232,244,236,0.85)'; ctx.font = FONT(700, 20);
+    if (t > 0.8) ctx.fillText('nest', nestAt[0] - 16, nestAt[1] + 42);
+    ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(600, 17);
+    if (t > 6.5) ctx.fillText('clock: a tick, then every ant decides', nestAt[0] - 560, nestAt[1] - 448);
+  } else if (inPlay) {
+    for (const f of D.foods) drawTrail(f, ct);
+    for (const f of D.foods) if (f.appearMs === 0 || ct >= f.appearMs - 1600) drawFood(f, t, ct, false);
+    for (const a of D.ants) drawAnt(t, a, ct);
+    drawPulses(ct);
+    drawHunger(ct);
+  }
+  if (t > 39.7 && t < 43.6) drawBars(t);
+
+  ctx.save();                                  // deterministic grain + vignette
+  ctx.globalAlpha = 0.5;
+  ctx.translate(-Math.floor(t * 30) % 256, -Math.floor(t * 47) % 256);
+  ctx.fillStyle = grainPat; ctx.fillRect(0, 0, 2176, 1336); ctx.restore();
+  const vg = ctx.createRadialGradient(CX, 540, 520, CX, 540, 1250);
+  vg.addColorStop(0, 'rgba(5,6,7,0)'); vg.addColorStop(1, 'rgba(5,6,7,0.55)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, 1920, 1080);
+
+  captions(t);
+  return t;
+}
+
+// ---------- sound: every scene says when its sounds happen ----------
+function soundEvents() {
+  const ev = [];
+  const add = (t, kind, gain = 1, param = null) => ev.push({ t: Math.round(t * 1000) / 1000, kind, gain: Math.round(gain * 100) / 100, param });
+  add(0.10, 'bed', 1, window.VIDEO_SECONDS);
+  for (const a of [0.30, 0.95, 1.60, 2.35]) add(a, 'type', 0.9);
+  for (const a of [0.45, 4.2, 5.4, 5.62, 5.84, 6.5]) add(a, 'pop', 0.8);
+  for (const s of SEG) {
+    let lastWhoosh = -9, lastBlip = -9;
+    for (const d of (D.deliveries ?? [])) {
+      if (d.t < s.c0 || d.t >= s.c1) continue;
+      const vt = videoT(d.t);
+      if (vt - lastWhoosh < 0.55) continue;    // one word at a time
+      lastWhoosh = vt;
+      add(vt, d.emptied ? 'thud' : 'whoosh', d.emptied ? 1 : 0.75, FOOD[d.food]?.dist ?? 400);
+    }
+    for (const r of (D.recruits ?? [])) {
+      if (r.t < s.c0 || r.t >= s.c1) continue;
+      const vt = videoT(r.t);
+      if (vt - lastBlip < 0.4) continue;
+      lastBlip = vt; add(vt, 'blip', 0.5);
+    }
+  }
+  for (const dr of (FACTS.drops ?? [])) {
+    const vt = videoT(clampC(dr.t));
+    add(vt, 'drop', 1); add(vt + 0.13, 'drop', 0.65);
+  }
+  add(39.6, 'settle', 1);
+  add(43.55, 'stamp', 1);
+  return ev.sort((a, b) => a.t - b.t);
+}
+
+// The interface render.py drives: one function of time, the sound the scenes want.
+window.SOUND_EVENTS = null;                    // built once READY
+window.soundEvents = soundEvents;
+window.renderFrame = renderFrame;
+window.READY = false;
+renderFrame(0);
+window.SOUND_EVENTS = soundEvents();
+window.READY = true;
