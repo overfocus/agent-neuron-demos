@@ -63,4 +63,11 @@ test('colony: ants forage without a scheduler, and the eager ones do more of it'
   assert.equal(r.code, 0);
   assert.ok(r.deliveries.length > 10, `only ${r.deliveries.length} deliveries`);
   assert.ok(r.eager > r.reluctant, `eager ${r.eager} vs reluctant ${r.reluctant}`);
+  // Loose assertions that hold under the default seed 11. The ants and the
+  // food run on live Math.random (never seeded), so nothing counts arrivals:
+  // only what the seed pins - the drop schedule - and what the demo promises.
+  assert.equal(r.seed, 11);
+  assert.ok(r.drops.length >= 1, 'no drop site in the schedule');
+  assert.ok(r.drops.every((d) => d.appear >= 0.3 * 15 && d.appear <= 0.8 * 15), `a drop outside the appear window: ${JSON.stringify(r.drops)}`);
+  assert.ok(Array.isArray(r.empties) && r.empties.every((e) => typeof e.food === 'string'), 'empties not shaped');
 });

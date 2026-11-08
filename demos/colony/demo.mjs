@@ -194,6 +194,9 @@ export async function main({ flags = [], say = console.log } = {}) {
   say(`  Foods: ${foods.map((f) => `${f.id} (${f.about})`).join('; ')}.`);
 
   let lastShown = -1;
+  const narrated = new Set(); // foods whose dry moment has been narrated once
+  const wasteSeen = new Map(); // emptied arrivals each food has answered, as seen
+  const foodIds = new Set(foods.map((f) => f.id));
   const run = startRun({
     name: 'colony',
     title: meta.title,
@@ -203,16 +206,30 @@ export async function main({ flags = [], say = console.log } = {}) {
     env: { COLONY_DIR: dir },
     walk: antIds,
     onEvent: (ev) => {
-      if (ev.type !== 'signal' || ev.from !== 'clock') return;
-      const sec = Math.floor(ev.t / 5000);
-      if (sec === lastShown) return;
-      lastShown = sec;
-      try {
-        const env = readEnv();
-        const trails = foods.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
-        say(`${String(sec * 5).padStart(3)} s  hunger ${env.hunger.toFixed(1).padStart(4)}  trails: ${trails}`);
-      } catch {
-        // the nest has not written yet
+      if (ev.type === 'signal' && ev.from === 'clock') {
+        const sec = Math.floor(ev.t / 5000);
+        if (sec === lastShown) return;
+        lastShown = sec;
+        try {
+          const env = readEnv();
+          const trails = foods.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
+          const lefts = foods.map((f) => `${f.id} ${String(env.lefts?.[f.id] ?? '-')}`).join(' ');
+          say(`${String(sec * 5).padStart(3)} s  hunger ${env.hunger.toFixed(1).padStart(4)}  trails: ${trails}  stock: ${lefts}`);
+        } catch {
+          // the nest has not written yet
+        }
+        return;
+      }
+      // A food answering emptied: the first time, the patch went dry. Later
+      // ones are the wasted arrivals the final report counts from the log.
+      const d = ev.payload?.data;
+      if (ev.type === 'answer' && d?.emptied && foodIds.has(ev.from)) {
+        const n = (wasteSeen.get(ev.from) ?? 0) + 1;
+        wasteSeen.set(ev.from, n);
+        if (!narrated.has(ev.from)) {
+          narrated.add(ev.from);
+          say(`${ev.from} ran dry at ${Math.round(ev.t / 1000)} s: ${n} wasted trip${n === 1 ? '' : 's'} so far.`);
+        }
       }
     },
   });
@@ -229,7 +246,7 @@ export async function main({ flags = [], say = console.log } = {}) {
   const table = [];
   for (let w = 0; w < windows; w++) {
     const inW = deliveries.filter((d) => Math.floor((d.t - t0) / 5000) === w);
-    const row = foods.map((f) => inW.filter((d) => d.food === f.id).length);
+    const row = foods.map((f) => inW.filter((d) => d.food === f.id && !d.emptied).length);
     table.push(row);
     say(`  ${String(w * 5).padStart(5)}  ${row.map((n) => String(n).padStart(9)).join('')}  ${String(new Set(inW.map((d) => d.ant)).size).padStart(8)}`);
   }
@@ -243,6 +260,35 @@ export async function main({ flags = [], say = console.log } = {}) {
   const last = table.slice(-2).reduce((acc, row) => acc.map((n, i) => n + row[i]), foods.map(() => 0));
   const won = foods[last.indexOf(Math.max(...last))];
   say(`At the end the colony was mostly on ${won.id} (${won.about}). Runs differ: a trail that takes hold early can keep the traffic even after a closer source appears, as real colonies do.`);
-  say(`${deliveries.length} deliveries in all. Trace: ${run.files.trace}`);
-  return { code, deliveries, table, eager, reluctant, won: won.id, events: run.events.length };
+  // The dry patches: an emptied arrival is a wasted trip. The log's first
+  // emptied line per food is when it went dry; every emptied arrival for it
+  // from that one on is its wasted-trip count.
+  const emptiedLines = deliveries.filter((d) => d.emptied);
+  const firstDry = {};
+  const wasted = Object.fromEntries(foods.map((f) => [f.id, 0]));
+  for (const d of emptiedLines) wasted[d.food] += 1;
+  for (const d of emptiedLines) if (firstDry[d.food] === undefined || d.t < firstDry[d.food]) firstDry[d.food] = d.t;
+  const dry = foods.filter((f) => firstDry[f.id] !== undefined);
+  say('');
+  say(dry.length
+    ? 'Dry patches, each arrival that found nothing after the first one a wasted trip:'
+    : 'No patch ran dry this take.');
+  for (const f of dry) say(`  ${f.id} went dry at ${Math.round((firstDry[f.id] - t0) / 1000)} s: ${wasted[f.id]} wasted trips since it did.`);
+  const dropsOut = drops.map((d) => ({ ...d, drawn: deliveries.filter((x) => x.food === d.id && !x.emptied).length }));
+  say('');
+  say(`The drop sites, drawn by seed ${seed}: ${dropsOut.map((d) => `${d.id} appearing at ${d.appear} s, ${d.drawn} deliver${d.drawn === 1 ? 'y' : 'ies'} drawn`).join('; ')}.`);
+  say(`${deliveries.filter((d) => !d.emptied).length} deliveries in all, ${emptiedLines.length} arrivals wasted on dry patches. Trace: ${run.files.trace}`);
+  return {
+    code,
+    deliveries,
+    table,
+    eager,
+    reluctant,
+    won: won.id,
+    events: run.events.length,
+    empties: dry.map((f) => ({ food: f.id, at: Math.round((firstDry[f.id] - t0) / 1000) })),
+    wasted,
+    drops: dropsOut,
+    seed,
+  };
 }
