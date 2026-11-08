@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Compile one recorded colony run into the video's frozen dataset.
 //
-//   node build-data.mjs <runDir>                 → data.js + sound handled by the composition
+//   node build-data.mjs <runDir>                 → data.js (the sound cues come from the composition)
 //   node build-data.mjs --stub --seconds 12     → synthetic data.js for smoke tests
 //
 // The run dir holds the run's own records (nothing is invented here):
-//   colony.network.json  the map: every neuron's `at`, the ants' thresholds, the ground block
-//   deliveries.jsonl     one line per arrival at the nest: {t, food, ant, left?, emptied?}
-//   stream.jsonl         the engine's event stream (ground events, forwards, the recruits)
+//   colony.network.json  the map: every neuron's `at`, the ants' thresholds, the foods' argv, the ground block
+//   colony.inputs.jsonl  the clock's ticks (the run's length in seconds)
+//   deliveries.jsonl     one line per arrival at the nest: {t, food, ant, emptied?}
+//   stream.jsonl         the engine's event stream (ground events, the forwards the recruits ride)
 // The scene schedule lives in composition.html; this file only freezes WHAT happened,
 // and computes the derived facts the captions quote, so the video never lies.
 
@@ -33,57 +34,55 @@ function fromRun(dir) {
   const net = readJson(path.join(dir, 'colony.network.json'));
   const deliveries = readLines(path.join(dir, 'deliveries.jsonl'));
   const stream = readLines(path.join(dir, 'stream.jsonl'));
-
-  // The ants' argv carries the foods and their walking distances; the foods'
-  // `at` carries the same distance as a length. Both, from the file.
-  const ants = [];
-  const foods = [];
+  // The run's length: the clock ticks the inputs file carries.
+  const tickLines = readLines(path.join(dir, 'colony.inputs.jsonl')).length;
+  const ants = [], foods = [];
   const nest = { id: 'nest', at: [0, 0, 0] };
-  let seconds = 45, tickMs = 250, evap = 0.25, base = 0.05, power = 2, seed = 0;
+  let tickMs = 250, evap = 0.25, base = 0.05, power = 2, seed = 0;
   for (const n of net.neurons) {
     const at = n.at ?? [0, 0, 0];
     if (n.id === 'clock') continue;
     if (n.id === 'nest') { nest.at = at; continue; }
     if (n.serve && /ant\.mjs/.test(n.serve[1] ?? '')) {
-      const argv = n.serve.slice(2);
+      const argv = n.serve.slice(2);          // ant argv: [id, theta, names, dists]
       ants.push({ id: n.id, at, theta: Number(argv[1]) });
     } else if (n.serve && /food\.mjs/.test(n.serve[1] ?? '')) {
-      const argv = n.serve.slice(2);
+      const argv = n.serve.slice(2);          // food argv: [id, stock, appearsMs, dist]
       foods.push({
-        id: n.id, at,
-        total: Number(argv[0]),
-        appearMs: Number(argv[1] ?? 0),
-        dist: Math.round(Math.hypot(at[0], at[1])),
-        drop: n.id.startsWith('drop-'),
+        id: String(argv[0]), at,
+        total: Number(argv[1]),
+        appearMs: Number(argv[2] ?? 0),
+        dist: Number(argv[3] ?? Math.round(Math.hypot(at[0], at[1]))),
+        drop: String(argv[0]).startsWith('drop-'),
       });
-    } else if (n.source) {
-      const d = n.description ?? '';
-      const m = d.match(/(\d+) ms/); if (m) tickMs = Number(m[1]);
     }
   }
-  const distById = Object.fromEntries(foods.map((f) => [f.id, f.dist]));
-  void distById;
-  // The ground block, for the exact ageing arithmetic.
+  const seconds = Math.round(tickLines * tickMs / 1000);
   const g = net.ground ?? {};
   if (Number.isFinite(g.evaporate)) evap = g.evaporate;
   if (Number.isFinite(g.base)) base = g.base;
   if (Number.isFinite(g.power)) power = g.power;
   if (Number.isInteger(g.seed)) seed = g.seed;
-  if (net.description) {
-    const m = net.description.match(/(\d+) seconds/);
-    if (m) seconds = Number(m[1]);
-  }
 
   // Normalize the deliveries to engine time: the jsonl carries wall times.
   // The first arrival at the nest is the first `signal` from any food to the nest.
   const rel = stream.filter((e) => e.to?.[0] === 'nest');
   let offset = 0;
   if (deliveries.length && rel.length) offset = deliveries[0].t - rel[0].t;
-  const trips = deliveries.map((d) => ({
-    ant: d.ant, food: d.food,
-    t: Math.max(0, Math.round(d.t - offset)),
-    left: d.left ?? null, emptied: Boolean(d.emptied),
-  }));
+  // Each answered pickup takes one unit; an emptied arrival finds the patch dry
+  // and takes nothing. The stock each patch is holding walks with its arrivals.
+  const eaten = Object.fromEntries(foods.map((f) => [f.id, 0]));
+  const total = Object.fromEntries(foods.map((f) => [f.id, f.total]));
+  const trips = deliveries.map((d) => {
+    const picked = !d.emptied;
+    if (picked) eaten[d.food] += 1;
+    return {
+      ant: d.ant, food: d.food,
+      t: Math.max(0, Math.round(d.t - offset)),
+      left: picked ? total[d.food] - eaten[d.food] : 0,
+      emptied: Boolean(d.emptied),
+    };
+  });
   trips.sort((a, b) => a.t - b.t);
 
   const ground = stream.filter((e) => e.type === 'ground')
@@ -182,5 +181,5 @@ if (args[0] === '--stub') {
   data = fromRun(args[0]);
 }
 const file = path.join(HERE, outName);
-fs.writeFileSync(file, `window.COLONY = ${JSON.stringify(data)};\n`);
+fs.writeFileSync(file, `window.COLONY = ${JSON.stringify(data)};\\n`);
 console.log(`${file}: ${data.deliveries?.length ?? data.facts?.deliveries} arrivals, ${data.ants.length} ants, ${data.foods.length} foods, ${data.ground.length} ground writes, seed ${data.seed}`);
