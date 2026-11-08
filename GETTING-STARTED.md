@@ -101,7 +101,8 @@ Flags that work on every demo with people:
 | `--pace <seconds>` | how long they "read" before each answer (default: a blink); 2 to 4 is watchable |
 | `--open` | open each person's desk page in your browser |
 
-The colony takes `--ants <n>` and `--seconds <s>`; quorum takes `--tie`.
+The colony takes `--ants <n>`, `--seconds <s>` and `--seed <n>` (0 draws a
+fresh map every take); quorum takes `--tie`.
 
 Every run leaves its trace, live stream and stderr under `runs/<demo>/`.
 
@@ -210,11 +211,14 @@ Variant: `--tie`. Lin picks patch-b; Sam's question offers both; Sam says No; no
 
 #### colony (45 s by default)
 
-`npm run demo colony` (or `-- --ants 40 --seconds 60` for a fuller screen)
+`npm run demo colony` (or `-- --ants 40 --seconds 60` for a fuller screen).
+The colony's three drop sites are drawn by `--seed <n>` (default 11: same
+seed, same schedule, so takes reproduce; `--seed 0`, a different map every
+take).
 
 1. The 3D view is a map: the nest in the middle with its ants as small dots around it, each food at its real walking distance (the network file gives every neuron its place, `at`), the clock off to one side. No neuron gives orders.
-2. The first seconds: ants walk out and back; a stream of them forms on the near berries as the trail strengthens. Each dot is one ant on one trip, read from the trace, so scrubbing the timeline replays the walking too.
-3. The terminal every 5 s: hunger and the strength of each trail.
-4. A quarter of the way in, a new near patch (honeydew) appears. Explorers find it while the berries trail is still busy.
-5. The berries run out part-way: that link goes dark, and the traffic moves across the map. Usually (four takes in five) it moves to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
-6. The table at the end: deliveries per food per 5 s, and the eager ants (low threshold) doing several times the trips of the reluctant ones.
+2. The first seconds: ants walk out and back; a stream of them forms on the near berries as the trail strengthens. Watch pairs leave together: a forager's answer also tells its three nearest ants, and an idle one follows to the same food at once, skipping the threshold roll (recruitment, on the neighbour links the network file declares beside the trails).
+3. The terminal every 5 s: hunger, the strength of each trail, and each patch's stock left (the nest keeps what every food last said it had).
+4. A quarter of the way in, a new near patch (honeydew) appears. Later still, one of the three drop sites appears (under the default seed at 45 s: drop-2 at 25 s, drop-1 at 27 s, drop-3 at 33 s), placed where no ant saw it before.
+5. The berries run out part-way and the terminal says so: `berries ran dry at 22 s: 1 wasted trip so far`. That link goes dark - the nest marks the trail dead on the ground - yet a few late arrivals still land there, each later one counted as a wasted trip. The traffic moves across the map, usually (four takes in five) to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
+6. The table at the end: deliveries per food per 5 s, and the eager ants (low threshold) doing several times the trips of the reluctant ones; under that, the dry patches with their wasted trips and the drop sites with their second and the deliveries drawn from them.
