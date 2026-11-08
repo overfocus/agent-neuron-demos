@@ -122,7 +122,8 @@ function fromRun(dir) {
     version: 1, seconds, tickMs, evap, base, power, seed,
     ants, foods, nest, deliveries: trips, ground, recruits,
     facts: {
-      deliveries: trips.length,
+      deliveries: trips.filter((d) => !d.emptied).length,
+      wastedTotal: trips.filter((d) => d.emptied).length,
       won, dry, drops,
       eagerAvg: Math.round(eagerAvg * 10) / 10,
       reluctantAvg: Math.round(reluctantAvg * 10) / 10,

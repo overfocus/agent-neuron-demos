@@ -12,6 +12,7 @@
   .cap .accent { color: #59f77c; }
   .cap .cyan { color: #4ad6ff; }
   .cap .dim { color: #8fa89a; font-weight: 600; }
+  .cap .line { display: block; }
   .cap.dim2 { color: #8fa89a; }
   #endcard { position: absolute; inset: 0; display: flex; flex-direction: column;
              justify-content: center; align-items: flex-start; padding: 0 160px; opacity: 0; }
@@ -76,26 +77,29 @@ const DROP_T = DROP ? DROP.t : RUN_LEN * 1000;
 const clampC = (c) => clamp(c, 0, RUN_LEN * 1000);
 
 function buildSegments() {
+  // Every piece exists and spans colony time that grows: targets, softened by a
+  // floor, so no take can freeze or blank a scene. The trails-form piece keeps
+  // its pace; the dry lens and the drop lens hold their moments longer.
+  const targets = [DRY_T - 3500, DRY_T + 3500, DRY_T + 11000, DROP_T - 6000,
+                   DROP_T - 2000, DROP_T + 6000, Math.min(clampC(SETTLE_T), DROP_T + 16000)];
+  const durs = [7.8, 3.2, 2.8, 3.0, 4.6, 2.8, 3.0, 3.6];
+  const names = ['trails', 'approach', 'dry-lens', 'post-dry', 'recruit', 'pre-drop', 'drop-lens', 'reroute'];
   const segs = [];
   let v = 8.6, c = 0;
-  const push = (dv, c1) => {
-    c1 = clampC(c1);
-    if (c1 > c + 1 && dv > 0.4) { segs.push({ v0: v, v1: v + dv, c0: c, c1 }); v += dv; c = c1; }
-  };
-  push(7.8, DRY_T - 7000);         // trails form (≈1x)
-  push(3.2, DRY_T - 2500);         // approaching the dry second
-  push(2.8, DRY_T + 3500);         // the dry lens (2.3x read)
-  push(3.0, DRY_T + 11000);        // traffic moves away
-  push(4.6, Math.max(DRY_T + 11001, DROP_T - 6000));   // recruitment
-  push(2.8, Math.max(DRY_T + 11001, DROP_T - 2000));   // approaching the drop
-  push(3.0, Math.max(DRY_T + 11001, DROP_T + 6000));   // the drop lens
-  push(3.6, Math.min(clampC(SETTLE_T), DROP_T + 16000, // rerouted traffic toward the settle
-                     Math.max(DRY_T + 11001, DROP_T + 6001)));
-  window.PLAY_END = v;             // the last piece's video end
+  for (let i = 0; i < 7; i++) {
+    const c1 = Math.max(c + 2500, clampC(targets[i]));
+    segs.push({ name: names[i], v0: v, v1: v + durs[i], c0: c, c1 });
+    v += durs[i]; c = c1;
+  }
+  const cEnd = Math.max(c + 1000, clampC(clampC(SETTLE_T) || c + 8000));
+  segs.push({ name: names[7], v0: v, v1: v + durs[7], c0: c, c1: cEnd });
+  window.PLAY_END = v + durs[7];
   return segs;
 }
 const SEG = buildSegments();
-const PLAY_END = window.PLAY_END;
+const SEG_BY = Object.fromEntries(SEG.map((s) => [s.name, s]));
+const the = (n) => SEG_BY[n] ?? SEG_BY.recroute ?? SEG[SEG.length - 1];
+const PLAY_END = 39.4;
 
 function colonyT(vt) {
   if (vt < SEG[0].v0) return 0;
@@ -157,7 +161,7 @@ function flight(antId, ct) {                // null (idle) or {u, food, carrying
 }
 
 // ---------- geometry ----------
-const CX = 960, CY = 548, S = 0.62;
+const CX = 960, CY = 560, S = 0.36;
 const px = (p) => [CX + p[0] * S, CY - p[1] * S];
 const nestAt = px(D.nest.at);
 const antHome = Object.fromEntries(D.ants.map((a) => [a.id, px(a.at)]));
@@ -266,6 +270,8 @@ function drawHunger(ct) {
   ctx.strokeStyle = GREEN; ctx.lineWidth = 7;
   ctx.beginPath(); ctx.arc(hx, hy, 46, Math.PI * 0.75, Math.PI * 0.75 + Math.PI * 1.5 * u); ctx.stroke();
   ctx.fillStyle = INK; ctx.font = FONT(700, 19); ctx.fillText('hunger', hx - 32, hy + 84);
+  ctx.fillStyle = INK; ctx.font = FONT(700, 24);
+  ctx.fillText(fmt(h, 1), hx - 18, hy + 44);
   ctx.fillStyle = 'rgba(143,168,154,0.85)'; ctx.font = FONT(600, 17);
   ctx.fillText(`t = ${fmt(ct / 1000, 0)} s`, hx - 28, hy - 74);
 }
@@ -325,23 +331,27 @@ function captions(t) {
     for (const [a, h] of L) if (t >= a) shown = h;
     set('cap-hook', shown, t < 3.0 ? rise(0.22, 0.6, t) : fade(3.0, 3.35, t));
   } else set('cap-hook', '', 0);
-  set('cap-map', t > 5.5 && t < 9.0
+  const trailsW = the('trails');
+  set('cap-map', t > 5.5 && t < trailsW.v0 + 0.4
     ? `<span class="dim">the map the network file draws — every neuron has an <span class="cyan">at</span>, every trip the engine traces</span>`
-    : '', t > 5.5 && t < 9.0 ? rise(5.5, 6.0, t) * fade(8.55, 8.95, t) : 0);
-  set('cap-trails', t > 9.6 && t < 16.2
+    : '', t > 5.5 && t < trailsW.v0 + 0.4 ? rise(5.5, 6.0, t) * fade(trailsW.v0 - 0.05, trailsW.v0 + 0.35, t) : 0);
+  set('cap-trails', t > trailsW.v0 + 1.0 && t < trailsW.v1 + 0.2
     ? `hunger rises. Each ant passes <span class="accent">its own threshold</span> — and goes.`
-    : '', t > 9.6 && t < 16.2 ? rise(9.6, 10.1, t) * fade(15.5, 16.1, t) : 0);
-  if (DRY && t > 18.0 && t < 25.2 && DRY_T < 30000) {
+    : '', t > trailsW.v0 + 1.0 && t < trailsW.v1 + 0.2 ? rise(trailsW.v0 + 1.0, trailsW.v0 + 1.5, t) * fade(trailsW.v1 - 0.4, trailsW.v1 + 0.15, t) : 0);
+  const dryW = the('dry-lens'), postW = the('post-dry');
+  if (DRY) {
     set('cap-dry', `<span class="line">${DRY.id} ran dry at ${fmt(DRY_T / 1000, 0)} s.</span>` +
       `<span class="line">The trail dies. <span class="cyan">The ground remembers.</span></span>`,
-      rise(18.0, 18.5, t) * fade(24.4, 25.1, t));
+      rise(dryW.v0 - 0.4, dryW.v0 + 0.1, t) * fade(postW.v1 - 0.4, postW.v1 + 0.1, t));
   } else set('cap-dry', '', 0);
-  set('cap-recruit', t > 25.6 && t < 30.1
+  const recW = the('recruit');
+  set('cap-recruit', t > recW.v0 + 0.2 && t < recW.v1
     ? `a returning forager's answer <span class="cyan">recruits idle nestmates</span> — one hop, no manager.`
-    : '', t > 25.6 && t < 30.1 ? rise(25.6, 26.1, t) * fade(29.5, 30.0, t) : 0);
-  if (DROP && t > 30.2 && t < 39.1 && DROP_T < RUN_LEN * 1000) {
+    : '', t > recW.v0 + 0.2 && t < recW.v1 ? rise(recW.v0 + 0.2, recW.v0 + 0.7, t) * fade(recW.v1 - 0.5, recW.v1, t) : 0);
+  const dropW = the('drop-lens'), rerW = the('reroute');
+  if (DROP) {
     set('cap-drop', `<span class="line">a drop, seeded: <span class="cyan">${DROP.id}</span> at t = ${fmt(DROP_T / 1000, 0)} s.</span><span class="line dim">same seed, same take.</span>`,
-      rise(30.2, 30.7, t) * fade(38.3, 39.0, t));
+      rise(dropW.v0 + 0.1, dropW.v0 + 0.6, t) * fade(rerW.v1 - 0.4, rerW.v1 + 0.1, t));
   } else set('cap-drop', '', 0);
   if (t > 39.7 && t < 43.5) {
     set('cap-labour', `the eager third: <span class="accent">${fmt(FACTS.eagerAvg ?? 0, 1)}</span> trips an ant.<br>` +
@@ -358,7 +368,7 @@ function captions(t) {
       ec.innerHTML = `
         <div class="cap" style="position:static; opacity:1; font-size:74px">agent-neuron</div>
         <div class="cap" style="position:static; opacity:1; font-size:40px; margin-top:14px"><span class="accent">no scheduler.</span> the graph is the referee.</div>
-        <div class="cap dim2" style="position:static; opacity:1; font-size:29px; margin-top:44px">${FACTS.deliveries ?? 0} deliveries · every trip a trace event · the map the file draws</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:29px; margin-top:44px">${FACTS.deliveries ?? 0} deliveries · ${FACTS.wastedTotal ?? 0} wasted on dry patches · every trip a trace event</div>
         <div class="cap dim2" style="position:static; opacity:1; font-size:25px; margin-top:10px">decision 0012 — the ground: trails as engine state · picture and sound rendered</div>`;
     }
   } else if (t < 43.3) { if (ec.dataset.h) { ec.dataset.h = ''; ec.style.opacity = '0'; ec.innerHTML = ''; } }
