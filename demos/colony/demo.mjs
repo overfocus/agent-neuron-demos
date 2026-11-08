@@ -4,15 +4,19 @@
 //   npm run demo colony -- --ants 40 --seconds 60
 //
 // Every ant is its own long-lived process (a serve neuron) with its own
-// response threshold; every food source holds its own stock. The only shared
-// thing is the ground: env.json, written by the nest alone (pheromone per
-// trail, the colony's hunger) and read by every ant. Ants that pass their
-// threshold go foraging, follow trails in proportion to their pheromone (and
-// sometimes explore), and the trail they come back on gets stronger; every
-// tick, all trails evaporate. A forager also recruits the ants nearest it: an
-// idle one follows to the same food at once, skipping its own threshold, and
-// never re-broadcasts a recruit it received. The nearest food runs out; a new
-// patch appears halfway through. Watch the traffic move.
+// response threshold. The trails live in the ENGINE now (agent-neuron
+// decision 0012): the network file declares a ground block and the nest lays
+// on the delivered food's place through its answer's add; the engine
+// evaporates each place (0.25 a second) and routes every return that names no
+// `to` along one link by max(0, base + ground[to])^power - the strong trail's
+// food, or, through the tiny base mass on links whose place has no deposit,
+// now and then a nearest nestmate. That leak is recruitment; an idle one
+// follows to the same food at once, skipping its own threshold, and never
+// re-broadcasts. The nest answers EVERY arrival to every ant - the colony's
+// drumbeat: the true stock and its route. A forager leaves without choosing:
+// its rumour of the colony's drum is the only hint it names, and the draw
+// decides. The nearest food runs out; a new patch appears halfway through.
+// Watch the traffic move.
 //
 // Three more patches, the drop sites, are drawn by mulberry32 from --seed
 // (default 11): distance 500-1400 ms, stock 200-400, an angle anywhere round
@@ -29,11 +33,12 @@ import { readEnv } from './neurons/env.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const N = (f) => path.join(HERE, 'neurons', f);
 const TICK_MS = 250;
+const EVAPORATE = 0.25; // per second, in the network file's ground block
 
 export const meta = {
   name: 'colony',
   title: 'The colony: n ants, food, and no one in charge',
-  about: 'Response thresholds, pheromone trails and evaporation, with every ant its own neuron and the ground as the only shared state.',
+  about: 'Response thresholds, recruitment and evaporation, with every ant its own neuron, the trail kept as the engine\'s ground and the nest\'s drumbeat as the only shared news.',
   variants: ['--ants <n>', '--seconds <s>', '--seed <n>'],
 };
 
@@ -101,8 +106,9 @@ function mapOf(antIds, foods) {
 
 /**
  * Each ant's three nearest ants on the shell (Euclidean in the map's coords):
- * the links a forager recruits along. A pair may be declared both ways - the
- * k-nearest sets of two neighbouring ants usually name each other.
+ * the links a forager's return leaks along into recruitment. A pair may be
+ * declared both ways - the k-nearest sets of two neighbouring ants usually
+ * name each other.
  */
 function nearestOf(at, antIds, k = 3) {
   const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
@@ -133,18 +139,35 @@ export function buildNetwork(dir, ants, seconds, seed = 11) {
   const net = {
     version: 0,
     name: 'colony',
-    description: `${ants} ants, ${foods.length} food sources (three of them drop sites, drawn by seed ${seed}), one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, picks a trail by its pheromone, and recruits its three nearest ants. The nest alone writes the ground (env.json); every ant reads it.`,
+    description: `${ants} ants, ${foods.length} food sources (three of them drop sites, drawn by seed ${seed}), one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, and its return is routed by the engine's ground - the nest lays pheromone per delivery, the engine evaporates it and picks the trail, with the ants' short links kept at the tiny base mass for the odd leak into recruitment. Every arrival is drummed to every ant.`,
+    ground: {
+      // The pheromone as the engine keeps it (decision 0012). The nest's
+      // answer names the place (payload food) and the amount (add: 600 over
+      // the trip's ms, or -0.5 for an arrival that found the patch empty:
+      // a dead trail). evaporate a second; every return that names no `to`
+      // is routed by the draw: max(0, base + ground[to])^power, in link
+      // declaration order, worded by seed - so a take reproduces.
+      deposit: { by: 'nest', on: 'food', add: 'add' },
+      evaporate: EVAPORATE,
+      select: true,
+      base: 2,
+      power: 2,
+      seed,
+    },
     neurons: [
       { id: 'clock', description: `A tick every ${TICK_MS} ms: each ant's moment to decide.`, at: at.clock, source: true },
-      { id: 'nest', at: at.nest, description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). Marks a trail dead when an arrival finds its patch empty. The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
+      { id: 'nest', at: at.nest, description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). Marks a trail dead when an arrival finds its patch empty. Answers every arrival to every ant - the colony\'s drumbeat: the true stock and its route. Hunger and the food notes live on env.json; the trail itself is the ground above.', serve: ['node', N('nest.mjs'), antIds.join(',')], env: ['COLONY_DIR'] },
       ...antIds.map((id, i) => ({
         id,
         at: at[id],
-        // maxHops 2: an ant hears the clock (0 hops) and a recruiter's forward
-        // (2 hops), and nothing deeper - so recruitment is one hop and a
-        // ant-to-ant cycle is legal to the engine's cycle rule.
-        maxHops: 2,
-        description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, follows trails by their pheromone, and recruits its three nearest ants (an idle one follows at once).`,
+        // maxHops 6: on the SPEC's 2(d-1) arithmetic each neuron on a path
+        // adds two hops (reply, then forward). A tick is hops 0 (depth 1),
+        // a leak the draw sends along an ant-ant link lands at hops 2, and
+        // the nest's drumbeat rides hops 6: clock-ant, ant-food, food-nest,
+        // nest-ant. Drums born of a recruited ant's trip come back at hops
+        // 8 and 12 and die on this limit: only the foragers' returns drum.
+        maxHops: 6,
+        description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, answers the patch it last heard the colony drum about, and lets the engine's ground pick where its return goes - the strong trail, or, through the base mass, a leak to a nearest ant (an idle one follows at once).`,
         serve: ['node', N('ant.mjs'), id, theta(i), names, dists, antIds.join(','), (neighbours[id] ?? []).join(',')],
         env: ['COLONY_DIR'],
       })),
@@ -152,7 +175,7 @@ export function buildNetwork(dir, ants, seconds, seed = 11) {
         id: f.id,
         at: at[f.id],
         description: `Food, ${f.about}: ${f.stock} units, ${f.distance} ms from the nest${f.appears ? `, appears at ${Math.round(f.appears * seconds)} s` : ''}.`,
-        serve: ['node', N('food.mjs'), String(f.stock), String(Math.round(f.appears * seconds * 1000))],
+        serve: ['node', N('food.mjs'), f.id, String(f.stock), String(Math.round(f.appears * seconds * 1000)), String(f.distance)],
       })),
     ],
     links: [
@@ -160,6 +183,7 @@ export function buildNetwork(dir, ants, seconds, seed = 11) {
       ...antIds.flatMap((a) => (neighbours[a] ?? []).map((b) => ({ from: a, to: b }))),
       ...antIds.flatMap((a) => foods.map((f) => ({ from: a, to: f.id }))),
       ...foods.map((f) => ({ from: f.id, to: 'nest' })),
+      ...antIds.map((a) => ({ from: 'nest', to: a })), // the drumbeat's legs
     ],
   };
   const file = path.join(dir, 'colony.network.json');
@@ -173,6 +197,7 @@ export function buildNetwork(dir, ants, seconds, seed = 11) {
     antIds,
     theta,
     foods,
+    ground: { evaporate: EVAPORATE },
     drops: drops.map((d) => ({ id: d.id, appear: Math.round(d.appears * seconds * 10) / 10 })),
   };
 }
@@ -189,11 +214,13 @@ export async function main({ flags = [], say = console.log } = {}) {
   const seed = Number.isFinite(seedReq) && seedReq >= 0 ? Math.floor(seedReq) : 11; // 0: an unseeded draw
   const dir = runDir('colony');
   process.env.COLONY_DIR = dir; // readEnv, for the progress lines
-  const { file, inputs, antIds, theta, foods, drops } = buildNetwork(dir, ants, seconds, seed);
+  const { file, inputs, antIds, theta, foods, drops, ground } = buildNetwork(dir, ants, seconds, seed);
   say(`${ants} ants, ${foods.length} food sources (3 of them drop sites drawn by seed ${seed}${seed === 0 ? ', unseeded: a different map every take' : ''}), ${seconds} s.`);
   say(`  Foods: ${foods.map((f) => `${f.id} (${f.about})`).join('; ')}.`);
 
   let lastShown = -1;
+  const groundState = new Map(); // place -> { v, at } from the stream's ground events
+  let groundWrites = 0;
   const narrated = new Set(); // foods whose dry moment has been narrated once
   const wasteSeen = new Map(); // emptied arrivals each food has answered, as seen
   const foodIds = new Set(foods.map((f) => f.id));
