@@ -1,0 +1,10 @@
+{
+  "$comment": "The team's house rules for agent work, as data in the repo instead of in anyone's prompt. A change to this file is a reviewed diff like any other.",
+  "dependencies": ["react", "zod", "pg"],
+  "config": "src/config.ts",
+  "helpers": {
+    "formatPrice": "format a price for display",
+    "toCents": "turn a price into whole cents",
+    "sailingLabel": "name a sailing for display"
+  }
+}

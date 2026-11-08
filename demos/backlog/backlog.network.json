@@ -1,0 +1,51 @@
+{
+  "version": 0,
+  "name": "backlog",
+  "description": "A week's backlog for a three-person team: 15 bugs, 5 requirements, 2 architecture changes. Agents do the work; the house rules (a data file) decide what needs a person; the desk is where people decide the rest. Bugs: clean fixes land on their own, lock-ins and slop go to the lead. Requirements: both ICs accept the agent's criteria. Architecture: both ICs advise, the lead decides, and the decision is written down.",
+  "budget": { "credits": 10 },
+  "neurons": [
+    { "id": "bugs", "description": "Bug reports, one trace each. A P4 is injected with a smaller budget.", "source": true },
+    { "id": "requirements", "description": "New requirements from product, one trace each.", "source": true },
+    { "id": "architecture", "description": "Architecture change requests, one trace each.", "source": true },
+
+    { "id": "fixer", "description": "The bug-fixing agent: answers a patch (canned and invented in this demo).", "run": ["node", "neurons/fixer.mjs"], "env": ["DEMO_DATA"], "cost": { "credits": 3 } },
+    { "id": "rules", "description": "The house rules as data: a dependency nobody chose is a lock-in; a second config or a duplicate helper is slop.", "run": ["node", "neurons/rules.mjs"], "env": ["HOUSE_RULES"], "cost": { "credits": 1 } },
+    { "id": "escalate", "description": "Quiet for a clean patch; for a flagged one, the lead's ask with the findings.", "run": ["node", "neurons/escalate.mjs"], "cost": { "credits": 0 } },
+    { "id": "lead-bugs", "description": "The lead decides a flagged fix: land it anyway, or send it back.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "land", "description": "Lands a fix: clean ones on their own, flagged ones only on the lead's word. An effect.", "run": ["node", "neurons/land.mjs"], "env": ["DEMO_DIR"], "effect": true, "cost": { "credits": 1 } },
+
+    { "id": "spec", "description": "The spec agent: acceptance criteria for a requirement, put to both ICs.", "run": ["node", "neurons/spec.mjs"], "env": ["DEMO_DATA"], "cost": { "credits": 2 } },
+    { "id": "ada-req", "description": "Ada on the criteria.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "lin-req", "description": "Lin on the criteria.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "plan", "description": "Both ICs have answered: scheduled when both accepted, else back to product.", "run": ["node", "neurons/plan.mjs"], "threshold": 2, "within": 1800000, "cost": { "credits": 1 } },
+
+    { "id": "adr", "description": "The architecture agent: drafts the decision record for both ICs.", "run": ["node", "neurons/adr.mjs"], "env": ["DEMO_DATA"], "cost": { "credits": 2 } },
+    { "id": "ada-arch", "description": "Ada's advice on the change.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "lin-arch", "description": "Lin's advice on the change.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "council", "description": "Both ICs have advised: the lead's ask, with their advice.", "run": ["node", "neurons/council.mjs"], "env": ["DEMO_DATA"], "threshold": 2, "within": 1800000, "cost": { "credits": 1 } },
+    { "id": "lead-arch", "description": "The lead adopts or rejects the change.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "record", "description": "Writes the decision record, adopted or rejected. An effect.", "run": ["node", "neurons/record.mjs"], "env": ["DEMO_DATA", "DEMO_DIR"], "effect": true, "cost": { "credits": 1 } }
+  ],
+  "links": [
+    { "from": "bugs", "to": "fixer" },
+    { "from": "fixer", "to": "rules" },
+    { "from": "rules", "to": "land" },
+    { "from": "rules", "to": "escalate" },
+    { "from": "escalate", "to": "lead-bugs" },
+    { "from": "lead-bugs", "to": "land" },
+
+    { "from": "requirements", "to": "spec" },
+    { "from": "spec", "to": "ada-req" },
+    { "from": "spec", "to": "lin-req" },
+    { "from": "ada-req", "to": "plan" },
+    { "from": "lin-req", "to": "plan" },
+
+    { "from": "architecture", "to": "adr" },
+    { "from": "adr", "to": "ada-arch" },
+    { "from": "adr", "to": "lin-arch" },
+    { "from": "ada-arch", "to": "council" },
+    { "from": "lin-arch", "to": "council" },
+    { "from": "council", "to": "lead-arch" },
+    { "from": "lead-arch", "to": "record" }
+  ]
+}

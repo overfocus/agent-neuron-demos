@@ -1,0 +1,47 @@
+{
+  "$comment": "An invented harbour booking app and its week's backlog: 15 bugs, 5 requirements, 2 architecture change requests. The agents in this demo are scripts that return the canned work below; the decisions about that work are real, on the engine's desk.",
+  "bugs": [
+    { "id": "BUG-01", "title": "Booking total ignores the child fare", "severity": "P2", "patch": { "summary": "apply childFare() in totals", "files": ["src/booking/total.ts"] } },
+    { "id": "BUG-02", "title": "Sailing list shows cancelled sailings", "severity": "P2", "patch": { "summary": "filter status=cancelled", "files": ["src/sailings/list.ts"] } },
+    { "id": "BUG-03", "title": "Receipt email has the wrong harbour name", "severity": "P3", "patch": { "summary": "read harbour from the booking, not the default", "files": ["src/mail/receipt.ts"] } },
+    { "id": "BUG-04", "title": "Departure times drift an hour after the clocks change", "severity": "P1", "patch": { "summary": "parse times with a date library", "files": ["src/sailings/time.ts", "package.json"], "dependency": "date-wrangler" } },
+    { "id": "BUG-05", "title": "Seat map does not scroll on small phones", "severity": "P3", "patch": { "summary": "overflow-x on the seat grid", "files": ["src/ui/seats.css"] } },
+    { "id": "BUG-06", "title": "Search returns sailings in the past", "severity": "P2", "patch": { "summary": "lower bound at now", "files": ["src/sailings/search.ts"] } },
+    { "id": "BUG-07", "title": "Double click books twice", "severity": "P1", "patch": { "summary": "disable the button while the request runs", "files": ["src/ui/book-button.tsx"] } },
+    { "id": "BUG-08", "title": "Refund amount rounds the wrong way", "severity": "P2", "patch": { "summary": "round half to even, in cents", "files": ["src/payments/refund.ts"] } },
+    { "id": "BUG-09", "title": "Port timeout is hard-coded", "severity": "P3", "patch": { "summary": "read timeouts from a new settings loader", "files": ["src/settings/loader.ts", "src/payments/client.ts"], "config": "src/settings/loader.ts" } },
+    { "id": "BUG-10", "title": "Waitlist badge shows 0 instead of hiding", "severity": "P4", "patch": { "summary": "hide when empty", "files": ["src/ui/badge.tsx"] } },
+    { "id": "BUG-11", "title": "Vehicle length accepts negative numbers", "severity": "P3", "patch": { "summary": "validate > 0", "files": ["src/booking/vehicle.ts"] } },
+    { "id": "BUG-12", "title": "Prices show three decimals in the basket", "severity": "P3", "patch": { "summary": "add formatCurrency() for the basket", "files": ["src/ui/basket.tsx", "src/lib/money.ts"], "helper": { "name": "formatCurrency", "does": "format a price for display" } } },
+    { "id": "BUG-13", "title": "Bookings query is slow on busy days", "severity": "P2", "patch": { "summary": "move the bookings table behind an ORM", "files": ["src/db/bookings.ts", "src/db/orm.ts", "package.json"], "dependency": "orm-lite" } },
+    { "id": "BUG-14", "title": "Timetable PDF cuts off the last row", "severity": "P3", "patch": { "summary": "page break before the footer", "files": ["src/pdf/timetable.ts"] } },
+    { "id": "BUG-15", "title": "Footer link to the old harbour site", "severity": "P4", "budget": { "credits": 2 }, "patch": { "summary": "update the link", "files": ["src/ui/footer.tsx"] } }
+  ],
+  "requirements": [
+    { "id": "REQ-1", "title": "A waitlist for full sailings", "ask": "When a sailing is full, let a passenger join a waitlist and be offered a seat if one frees up.", "criteria": "When a sailing is full, a passenger can join its waitlist. A freed seat is offered to the first on the list for 15 minutes, then to the next. A passenger sees their place in the list." },
+    { "id": "REQ-2", "title": "Free cancellation within 24 hours", "ask": "Let people cancel for free if they booked by mistake.", "criteria": "A booking cancelled within 24 hours of being made, and more than 48 hours before departure, is refunded in full. Other cancellations follow the fare rules. The receipt says which rule applied." },
+    { "id": "REQ-3", "title": "Group bookings", "ask": "Groups should be able to book together.", "criteria": "One booking can hold up to 12 passengers on one sailing. Seats are kept together when the map allows; otherwise the booking says they are apart before payment." },
+    { "id": "REQ-4", "title": "Accessible seating requests", "ask": "Passengers need to be able to ask for accessible seating.", "criteria": "A passenger can request an accessible seat or a wheelchair space while booking. The request reaches the crew list for that sailing. A sailing with no space left says so before payment." },
+    { "id": "REQ-5", "title": "Text message reminders", "ask": "Remind people by text before they sail.", "criteria": "A passenger who gives a phone number gets one text 3 hours before departure, and one if the sailing is delayed by more than 20 minutes. Texts are sent through a new messaging provider." }
+  ],
+  "architecture": [
+    { "id": "ARCH-1", "title": "Move bookings from SQLite to Postgres", "now": "Bookings live in one SQLite file on the booking server. Backups are a nightly copy.", "proposal": "Bookings move to a managed Postgres. The booking server connects through one pool. Backups are the provider's point-in-time recovery. The SQLite file is kept read-only for 30 days." },
+    { "id": "ARCH-2", "title": "An event bus between booking and payments", "now": "The booking service calls the payments service directly and waits for the answer.", "proposal": "Booking publishes a booking-made event on a new message bus; payments consumes it and publishes payment-taken. Both services stop calling each other." }
+  ],
+  "headless": {
+    "$comment": "What the three invented people decide when the demo runs with --headless.",
+    "bugs": {
+      "BUG-04": { "choose": "land", "why": "date-wrangler is small and maintained; adopt it" },
+      "BUG-09": { "choose": "rework", "why": "timeouts go in src/config.ts, the one config" },
+      "BUG-12": { "choose": "rework", "why": "use formatPrice; it already does this" },
+      "BUG-13": { "choose": "rework", "why": "an ORM is an architecture change: raise an ARCH, not a bug fix" }
+    },
+    "requirements": {
+      "REQ-5": { "lin": { "choose": "back", "why": "a new SMS provider needs a budget owner first" } }
+    },
+    "architecture": {
+      "ARCH-1": { "ada": "accept", "lin": "accept", "sam": { "choose": "adopt", "why": "backups alone justify it" } },
+      "ARCH-2": { "ada": "accept", "lin": "reject", "sam": { "choose": "reject", "why": "not until a second consumer exists" } }
+    }
+  }
+}

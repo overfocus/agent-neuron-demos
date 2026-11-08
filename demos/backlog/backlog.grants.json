@@ -1,0 +1,8 @@
+{
+  "version": 0,
+  "people": [
+    { "id": "ada", "name": "Ada", "roles": ["ic"], "answers": ["ada-req", "ada-arch"] },
+    { "id": "lin", "name": "Lin", "roles": ["ic"], "answers": ["lin-req", "lin-arch"] },
+    { "id": "sam", "name": "Sam", "roles": ["lead"], "answers": ["lead-bugs", "lead-arch"] }
+  ]
+}
