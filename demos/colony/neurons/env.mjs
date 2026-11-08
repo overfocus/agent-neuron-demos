@@ -2,7 +2,10 @@
 // the nest writes it (atomic rename); ants read it. Nothing else is shared.
 // Time acts on the ground by itself: between writes, every trail evaporates
 // (times RHO per STEP_MS) and the colony gets hungrier (GROWTH per STEP_MS),
-// so whoever reads it sees the ground as it is now.
+// so whoever reads it sees the ground as it is now. Two maps ride beside the
+// trails: lefts, what each food last said it had (keyed by food), and dead,
+// the instant of the first arrival that found a patch empty - a trail marked
+// dead on the ground, which pick() then weighs 0.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -17,7 +20,7 @@ export function readEnv(now = Date.now()) {
   try {
     env = JSON.parse(fs.readFileSync(FILE(), 'utf8'));
   } catch {
-    return { hunger: 6, pheromone: {}, delivered: {}, at: now };
+    return { hunger: 6, pheromone: {}, delivered: {}, dead: {}, lefts: {}, at: now };
   }
   const steps = Math.max(0, (now - env.at) / STEP_MS);
   const decay = RHO ** steps;
