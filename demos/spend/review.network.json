@@ -1,0 +1,10 @@
+{
+  "version": 0,
+  "name": "spend-review",
+  "description": "The manager reads last round's spend and sets the ceiling per task for the next round. The answer becomes a reviewed change to policy.json.",
+  "neurons": [
+    { "id": "spend", "description": "The spend report of the last round.", "source": true },
+    { "id": "manager", "description": "Sam sets the ceiling per task: keep it, or lower it. Never raise: the engine would refuse it.", "human": true, "timeout": 1800000 }
+  ],
+  "links": [{ "from": "spend", "to": "manager" }]
+}

@@ -1,0 +1,18 @@
+{
+  "$comment": "Invented refund requests for the harbour booking app. Accounts are made-up ids; no real people.",
+  "requests": [
+    { "id": "R-1", "account": "acct-1041", "amount": 18, "reason": "seat not available on the day" },
+    { "id": "R-2", "account": "acct-2210", "amount": 32, "reason": "sailing cancelled for weather", "slow": true },
+    { "id": "R-3", "account": "acct-0907", "amount": 140, "reason": "group booking cancelled within 24 hours" },
+    { "id": "R-4", "account": "acct-3314", "amount": 260, "reason": "says the vehicle space was never used" },
+    { "id": "R-5", "account": "acct-1188", "amount": 22, "reason": "charged twice for one ticket" },
+    { "id": "R-6", "account": "acct-5520", "amount": 75, "reason": "sailing delayed over three hours", "crash": true },
+    { "id": "R-7", "account": "acct-0466", "amount": 41, "reason": "accessibility request not met" }
+  ],
+  "limit": 50,
+  "headless": {
+    "R-3": { "choose": "pay", "why": "inside the 24-hour rule" },
+    "R-4": { "choose": "deny", "why": "the gate log shows the vehicle boarded" },
+    "R-6": { "choose": "pay", "why": "the delay is in the sailing log" }
+  }
+}

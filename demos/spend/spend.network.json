@@ -1,0 +1,18 @@
+{
+  "version": 0,
+  "name": "spend",
+  "description": "A research agent and a critic in a loop: each round costs 3 credits (research 2, critique 1), and a task goes round until the critic is satisfied. The file's budget is the most any one task may spend; the producer may lower it per task when it injects, never raise it.",
+  "budget": { "credits": 12 },
+  "neurons": [
+    { "id": "tasks", "description": "This week's research tasks, one trace each.", "source": true },
+    { "id": "researcher", "description": "Adds a finding each round (canned).", "run": ["node", "neurons/researcher.mjs"], "maxHops": 40, "cost": { "credits": 2 } },
+    { "id": "critic", "description": "Asks for another round until the task has had enough.", "serve": ["node", "neurons/critic.mjs"], "maxHops": 40, "cost": { "credits": 1 } },
+    { "id": "report", "description": "A finished task, on stdout.", "run": ["node", "neurons/report.mjs"], "cost": { "credits": 0 } }
+  ],
+  "links": [
+    { "from": "tasks", "to": "researcher" },
+    { "from": "researcher", "to": "critic" },
+    { "from": "critic", "to": "researcher" },
+    { "from": "critic", "to": "report" }
+  ]
+}

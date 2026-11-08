@@ -1,0 +1,26 @@
+{
+  "version": 0,
+  "name": "refunds",
+  "description": "Refunds: a check agent proposes each one; under the limit it pays on its own, over the limit a person decides. Paying is an effect: never cut by a newer request, its forward held back when stale, a crash recorded as unknown. A reconcile source asks the ledger what really happened.",
+  "neurons": [
+    { "id": "requests", "description": "Refund requests, keyed by refund id (a resubmitted request replaces its first).", "source": true },
+    { "id": "check", "description": "The refund agent: checks the booking and proposes the refund.", "run": ["node", "neurons/check.mjs"], "env": ["REFUND_DATA"] },
+    { "id": "auto", "description": "Under the limit: on to pay. Over: quiet.", "run": ["node", "neurons/auto.mjs"], "env": ["REFUND_DATA"] },
+    { "id": "ask", "description": "Over the limit: the approver's ask. Under: quiet.", "run": ["node", "neurons/ask.mjs"], "env": ["REFUND_DATA"] },
+    { "id": "approver", "description": "Sam approves or denies a large refund.", "human": true, "timeout": 1800000 },
+    { "id": "pay", "description": "Pays the refund, idempotent by id. An effect.", "run": ["node", "neurons/pay.mjs"], "env": ["REFUND_DATA", "DEMO_DIR"], "effect": true },
+    { "id": "receipt", "description": "Sends the customer's receipt for a forwarded payment.", "run": ["node", "neurons/receipt.mjs"] },
+    { "id": "reconcile", "description": "Where an unknown is asked about, by refund id.", "source": true },
+    { "id": "lookup", "description": "Reads the ledger: was it paid?", "run": ["node", "neurons/lookup.mjs"], "env": ["DEMO_DIR"] }
+  ],
+  "links": [
+    { "from": "requests", "to": "check" },
+    { "from": "check", "to": "auto" },
+    { "from": "check", "to": "ask" },
+    { "from": "auto", "to": "pay" },
+    { "from": "ask", "to": "approver" },
+    { "from": "approver", "to": "pay" },
+    { "from": "pay", "to": "receipt" },
+    { "from": "reconcile", "to": "lookup" }
+  ]
+}
