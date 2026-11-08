@@ -9,8 +9,10 @@
 // trail, the colony's hunger) and read by every ant. Ants that pass their
 // threshold go foraging, follow trails in proportion to their pheromone (and
 // sometimes explore), and the trail they come back on gets stronger; every
-// tick, all trails evaporate. The nearest food runs out; a new patch appears
-// halfway through. Watch the traffic move.
+// tick, all trails evaporate. A forager also recruits the ants nearest it: an
+// idle one follows to the same food at once, skipping its own threshold, and
+// never re-broadcasts a recruit it received. The nearest food runs out; a new
+// patch appears halfway through. Watch the traffic move.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +64,26 @@ function mapOf(antIds) {
   return at;
 }
 
+/**
+ * Each ant's three nearest ants on the shell (Euclidean in the map's coords):
+ * the links a forager recruits along. A pair may be declared both ways - the
+ * k-nearest sets of two neighbouring ants usually name each other.
+ */
+function nearestOf(at, antIds, k = 3) {
+  const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  return Object.fromEntries(
+    antIds.map((a) => [
+      a,
+      antIds
+        .filter((b) => b !== a)
+        .map((b) => [d(at[a], at[b]), b])
+        .sort((x, y) => x[0] - y[0])
+        .slice(0, k)
+        .map(([, b]) => b),
+    ]),
+  );
+}
+
 export function buildNetwork(dir, ants, seconds) {
   const names = FOODS.map((f) => f.id).join(',');
   const dists = FOODS.map((f) => f.distance).join(',');
@@ -70,6 +92,7 @@ export function buildNetwork(dir, ants, seconds) {
   // individuals, not copies.
   const theta = (i) => (ants === 1 ? 6 : 2 + (12 * i) / (ants - 1)).toFixed(1);
   const at = mapOf(antIds);
+  const neighbours = nearestOf(at, antIds);
   const net = {
     version: 0,
     name: 'colony',
@@ -80,8 +103,12 @@ export function buildNetwork(dir, ants, seconds) {
       ...antIds.map((id, i) => ({
         id,
         at: at[id],
-        description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, follows trails by their pheromone.`,
-        serve: ['node', N('ant.mjs'), id, theta(i), names, dists],
+        // maxHops 2: an ant hears the clock (0 hops) and a recruiter's forward
+        // (2 hops), and nothing deeper - so recruitment is one hop and a
+        // ant-to-ant cycle is legal to the engine's cycle rule.
+        maxHops: 2,
+        description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, follows trails by their pheromone, and recruits its three nearest ants (an idle one follows at once).`,
+        serve: ['node', N('ant.mjs'), id, theta(i), names, dists, antIds.join(','), (neighbours[id] ?? []).join(',')],
         env: ['COLONY_DIR'],
       })),
       ...FOODS.map((f) => ({
@@ -93,6 +120,7 @@ export function buildNetwork(dir, ants, seconds) {
     ],
     links: [
       ...antIds.map((a) => ({ from: 'clock', to: a })),
+      ...antIds.flatMap((a) => (neighbours[a] ?? []).map((b) => ({ from: a, to: b }))),
       ...antIds.flatMap((a) => FOODS.map((f) => ({ from: a, to: f.id }))),
       ...FOODS.map((f) => ({ from: f.id, to: 'nest' })),
     ],
