@@ -41,16 +41,16 @@ const idOf = (item) => item.payload?.title?.match(/^((?:BUG|REQ|ARCH)-\d+)/)?.[1
 
 /** What one invented person decides on an item, by the data's headless section. */
 function decide(who, policy, it) {
-    const id = idOf(it);
-    let pick = { choose: 'accept' };
-    if (it.neuron === 'lead-bugs') pick = policy.bugs[id] ?? { choose: 'rework' };
-    else if (it.neuron === 'lead-arch') pick = policy.architecture[id]?.sam ?? { choose: 'reject' };
-    else if (it.neuron.endsWith('-req')) pick = policy.requirements[id]?.[who] ?? { choose: 'accept' };
-    else if (it.neuron.endsWith('-arch')) {
-      const p = policy.architecture[id]?.[who];
-      pick = typeof p === 'string' ? { choose: p } : (p ?? { choose: 'accept' });
-    }
-    return { kind: 'choose', option: pick.choose, why: pick.why };
+  const id = idOf(it);
+  let pick = { choose: 'accept' };
+  if (it.neuron === 'lead-bugs') pick = policy.bugs[id] ?? { choose: 'rework' };
+  else if (it.neuron === 'lead-arch') pick = policy.architecture[id]?.sam ?? { choose: 'reject' };
+  else if (it.neuron.endsWith('-req')) pick = policy.requirements[id]?.[who] ?? { choose: 'accept' };
+  else if (it.neuron.endsWith('-arch')) {
+    const p = policy.architecture[id]?.[who];
+    pick = typeof p === 'string' ? { choose: p } : (p ?? { choose: 'accept' });
+  }
+  return { kind: 'choose', option: pick.choose, why: pick.why };
 }
 
 export async function main({ headless = false, say = console.log } = {}) {
