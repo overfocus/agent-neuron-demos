@@ -1,0 +1,14 @@
+{
+  "name": "agent-neuron-demos",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Demos of agent-neuron's decision surface: people and agents deciding together on the engine's desk, watched in agent-neuron-viz.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "demo": "node bin/demo.mjs",
+    "test": "node --test --test-concurrency=1 test/",
+    "check": "node --test --test-concurrency=1 test/"
+  }
+}

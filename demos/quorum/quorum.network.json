@@ -1,0 +1,22 @@
+{
+  "version": 0,
+  "name": "quorum",
+  "description": "Two agent patches, one decision: both reviewers choose on the desk, a threshold-2 join hears them together, and the lead's gate drives a real git merge, declared as an effect.",
+  "budget": { "credits": 12 },
+  "neurons": [
+    { "id": "patches", "description": "Where the agents' two candidate branches are put to the team, as one ask with options.", "source": true },
+    { "id": "ic1", "description": "A reviewer's choice: which patch should land.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "ic2", "description": "The other reviewer's choice, on its own desk item.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "tally", "description": "The quorum: acts only when both reviewers have chosen, then asks the lead - one Merge on agreement, both options on a split.", "run": ["node", "neurons/tally.mjs"], "env": ["DEMO_REPO"], "threshold": 2, "within": 1800000, "cost": { "credits": 1 } },
+    { "id": "lead", "description": "The lead's gate: merge the branch, or No.", "human": true, "timeout": 1800000, "cost": { "credits": 1 } },
+    { "id": "merge", "description": "Runs git merge --no-ff on the chosen branch in the scratch repo. An effect: never cut, and a crash is unknown, not an error.", "run": ["node", "neurons/merge.mjs", "agent/patch-a", "agent/patch-b"], "env": ["DEMO_REPO"], "effect": true, "cost": { "credits": 3 } }
+  ],
+  "links": [
+    { "from": "patches", "to": "ic1" },
+    { "from": "patches", "to": "ic2" },
+    { "from": "ic1", "to": "tally" },
+    { "from": "ic2", "to": "tally" },
+    { "from": "tally", "to": "lead" },
+    { "from": "lead", "to": "merge" }
+  ]
+}
