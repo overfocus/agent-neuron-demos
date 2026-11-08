@@ -29,13 +29,38 @@ export const meta = {
   variants: ['--ants <n>', '--seconds <s>'],
 };
 
-/** The food sources: near and small, middling, far and rich, and one that appears later. */
+/**
+ * The food sources: near and small, middling, far and rich, and one that
+ * appears later. `angle` places each on the map around the nest (degrees),
+ * at its distance: the map's unit is a millisecond of walking. The berries
+ * and the late honeydew are on opposite sides, so the switch crosses the map.
+ */
 export const FOODS = [
-  { id: 'berries', distance: 400, stock: 60, appears: 0, about: 'near, small: runs out part-way' },
-  { id: 'seeds', distance: 1000, stock: 400, appears: 0, about: 'middle distance, plenty' },
-  { id: 'carcass', distance: 1400, stock: 400, appears: 0, about: 'far, plenty' },
-  { id: 'honeydew', distance: 450, stock: 400, appears: 0.25, about: 'near, plenty, appears a quarter of the way in' },
+  { id: 'berries', distance: 400, stock: 60, appears: 0, angle: 20, about: 'near, small: runs out part-way' },
+  { id: 'seeds', distance: 1000, stock: 400, appears: 0, angle: 115, about: 'middle distance, plenty' },
+  { id: 'carcass', distance: 1400, stock: 400, appears: 0, angle: 290, about: 'far, plenty' },
+  { id: 'honeydew', distance: 450, stock: 400, appears: 0.25, angle: 200, about: 'near, plenty, appears a quarter of the way in' },
 ];
+
+const round = (v) => Math.round(v * 10) / 10;
+
+/** Where each neuron sits (decision 0011's `at`): the nest at the origin, food at its distance, ants on a shell round the nest. */
+function mapOf(antIds) {
+  const at = { nest: [0, 0, 0], clock: [-1100, 900, -200] };
+  for (const f of FOODS) {
+    const a = (f.angle * Math.PI) / 180;
+    at[f.id] = [round(f.distance * Math.cos(a)), round(f.distance * Math.sin(a)), 0];
+  }
+  // A Fibonacci shell: evenly spread, the same every run.
+  const n = antIds.length;
+  antIds.forEach((id, i) => {
+    const y = n === 1 ? 0 : 1 - (2 * i) / (n - 1);
+    const r = Math.sqrt(1 - y * y);
+    const phi = i * Math.PI * (3 - Math.sqrt(5));
+    at[id] = [round(90 * r * Math.cos(phi)), round(90 * y), round(90 * r * Math.sin(phi))];
+  });
+  return at;
+}
 
 export function buildNetwork(dir, ants, seconds) {
   const names = FOODS.map((f) => f.id).join(',');
@@ -44,21 +69,24 @@ export function buildNetwork(dir, ants, seconds) {
   // Thresholds spread from eager (2) to reluctant (14): a colony of
   // individuals, not copies.
   const theta = (i) => (ants === 1 ? 6 : 2 + (12 * i) / (ants - 1)).toFixed(1);
+  const at = mapOf(antIds);
   const net = {
     version: 0,
     name: 'colony',
     description: `${ants} ants, ${FOODS.length} food sources, one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, and picks a trail by its pheromone. The nest alone writes the ground (env.json); every ant reads it.`,
     neurons: [
-      { id: 'clock', description: `A tick every ${TICK_MS} ms: each ant's moment to decide.`, source: true },
-      { id: 'nest', description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
+      { id: 'clock', description: `A tick every ${TICK_MS} ms: each ant's moment to decide.`, at: at.clock, source: true },
+      { id: 'nest', at: at.nest, description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
       ...antIds.map((id, i) => ({
         id,
+        at: at[id],
         description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, follows trails by their pheromone.`,
         serve: ['node', N('ant.mjs'), id, theta(i), names, dists],
         env: ['COLONY_DIR'],
       })),
       ...FOODS.map((f) => ({
         id: f.id,
+        at: at[f.id],
         description: `Food, ${f.about}: ${f.stock} units, ${f.distance} ms from the nest${f.appears ? `, appears at ${Math.round(f.appears * seconds)} s` : ''}.`,
         serve: ['node', N('food.mjs'), String(f.stock), String(Math.round(f.appears * seconds * 1000))],
       })),
@@ -98,6 +126,7 @@ export async function main({ flags = [], say = console.log } = {}) {
     network: file,
     inputs,
     env: { COLONY_DIR: dir },
+    walk: antIds,
     onEvent: (ev) => {
       if (ev.type !== 'signal' || ev.from !== 'clock') return;
       const sec = Math.floor(ev.t / 5000);

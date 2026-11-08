@@ -212,9 +212,9 @@ Variant: `--tie`. Lin picks patch-b; Sam's question offers both; Sam says No; no
 
 `npm run demo colony` (or `-- --ants 40 --seconds 60` for a fuller screen)
 
-1. The 3D view: the clock on the left, the ants, four food sources, the nest on the right. No neuron gives orders.
-2. The first seconds: ants explore; the near berries trail lights up as deliveries reach the nest.
+1. The 3D view is a map: the nest in the middle with its ants as small dots around it, each food at its real walking distance (the network file gives every neuron its place, `at`), the clock off to one side. No neuron gives orders.
+2. The first seconds: ants walk out and back; a stream of them forms on the near berries as the trail strengthens. Each dot is one ant on one trip, read from the trace, so scrubbing the timeline replays the walking too.
 3. The terminal every 5 s: hunger and the strength of each trail.
 4. A quarter of the way in, a new near patch (honeydew) appears. Explorers find it while the berries trail is still busy.
-5. The berries run out part-way: that link goes dark, and the traffic moves. Usually (four takes in five) it moves to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
+5. The berries run out part-way: that link goes dark, and the traffic moves across the map. Usually (four takes in five) it moves to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
 6. The table at the end: deliveries per food per 5 s, and the eager ants (low threshold) doing several times the trips of the reluctant ones.

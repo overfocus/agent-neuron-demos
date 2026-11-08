@@ -36,7 +36,7 @@ stderr and in its trace.
 | `spend` | An agent and a critic in a loop, under a credit ceiling per task. The spend report goes to the manager on the desk; the answer becomes a `policy.json` diff, and round 2 runs under the new ceiling. |
 | `refunds` | Paying is an effect. Large refunds wait for a person. A resubmitted request mid-payment does not cut the payment; its answer is recorded but not forwarded, and the duplicate returns the first payment's result. A payment that crashes after the money moved is `unknown`, and a reconcile run asks the ledger. |
 | `oncall` | A decision that goes stale before it is made: a newer alert for the same service withdraws the waiting ask from the desk, the late answer is refused, and the new ask takes its place. |
-| `colony` | *n* ants, food and a nest, with no one in charge. Each ant is its own long-lived neuron with its own response threshold; it forages when the colony is hungry enough for it, and follows trails in proportion to their pheromone. The nest alone writes the ground (pheromone, hunger); time evaporates it. The nearest food runs out and a new patch appears: watch the traffic move. |
+| `colony` | *n* ants, food and a nest, with no one in charge. Each ant is its own long-lived neuron with its own response threshold; it forages when the colony is hungry enough for it, and follows trails in proportion to their pheromone. The nest alone writes the ground (pheromone, hunger); time evaporates it. The network file places every neuron (`at`), so the view is a map, and the ants walk it. The nearest food runs out and a new patch appears on the other side: watch the traffic move. |
 
 ## Run them
 
