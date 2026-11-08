@@ -181,5 +181,5 @@ if (args[0] === '--stub') {
   data = fromRun(args[0]);
 }
 const file = path.join(HERE, outName);
-fs.writeFileSync(file, `window.COLONY = ${JSON.stringify(data)};\\n`);
+fs.writeFileSync(file, `window.COLONY = ${JSON.stringify(data)};\n`);
 console.log(`${file}: ${data.deliveries?.length ?? data.facts?.deliveries} arrivals, ${data.ants.length} ants, ${data.foods.length} foods, ${data.ground.length} ground writes, seed ${data.seed}`);
