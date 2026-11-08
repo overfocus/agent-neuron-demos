@@ -231,15 +231,28 @@ export async function main({ flags = [], say = console.log } = {}) {
     network: file,
     inputs,
     env: { COLONY_DIR: dir },
+    ground,
     walk: antIds,
     onEvent: (ev) => {
+      if (ev.type === 'ground') {
+        groundWrites += 1;
+        groundState.set(ev.place, { v: ev.v, at: ev.t });
+        return;
+      }
       if (ev.type === 'signal' && ev.from === 'clock') {
         const sec = Math.floor(ev.t / 5000);
         if (sec === lastShown) return;
         lastShown = sec;
         try {
           const env = readEnv();
-          const trails = foods.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
+          const now = ev.t;
+          const trails = foods
+            .map((f) => {
+              const g = groundState.get(f.id);
+              const aged = g ? g.v * Math.exp(-EVAPORATE * ((now - g.at) / 1000)) : 0;
+              return `${f.id} ${aged.toFixed(1).padStart(5)}`;
+            })
+            .join('  ');
           const lefts = foods.map((f) => `${f.id} ${String(env.lefts?.[f.id] ?? '-')}`).join(' ');
           say(`${String(sec * 5).padStart(3)} s  hunger ${env.hunger.toFixed(1).padStart(4)}  trails: ${trails}  stock: ${lefts}`);
         } catch {
@@ -305,6 +318,13 @@ export async function main({ flags = [], say = console.log } = {}) {
   say('');
   say(`The drop sites, drawn by seed ${seed}: ${dropsOut.map((d) => `${d.id} appearing at ${d.appear} s, ${d.drawn} deliver${d.drawn === 1 ? 'y' : 'ies'} drawn`).join('; ')}.`);
   say(`${deliveries.filter((d) => !d.emptied).length} deliveries in all, ${emptiedLines.length} arrivals wasted on dry patches. Trace: ${run.files.trace}`);
+  say(`The nest laid the trail ${groundWrites} time${groundWrites === 1 ? '' : 's'} (the engine's ground).`);
+  // The settle beat: the last delivery home, and everything at rest.
+  const home = deliveries.filter((d) => !d.emptied);
+  const settled = home[home.length - 1];
+  say(settled
+    ? `the colony settled at ${Math.round((settled.t - t0) / 1000)} s on ${settled.food} - every delivery home, hunger at rest.`
+    : 'the colony never settled - no delivery came home.');
   return {
     code,
     deliveries,
@@ -313,6 +333,7 @@ export async function main({ flags = [], say = console.log } = {}) {
     reluctant,
     won: won.id,
     events: run.events.length,
+    groundWrites,
     empties: dry.map((f) => ({ food: f.id, at: Math.round((firstDry[f.id] - t0) / 1000) })),
     wasted,
     drops: dropsOut,
