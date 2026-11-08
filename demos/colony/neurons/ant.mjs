@@ -1,5 +1,5 @@
 // One ant. argv: its id, its response threshold, the food ids, and each food's
-// distance in ms. On each tick from the nest it decides for itself:
+// distance in ms. On each tick of the clock it decides for itself:
 //   - busy on a trip: quiet;
 //   - else it forages with probability s^2 / (s^2 + theta^2), s the nest's
 //     hunger (a response threshold: Bonabeau et al.);

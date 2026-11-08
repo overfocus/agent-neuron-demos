@@ -1,16 +1,28 @@
 // The colony's environment (stigmergy): one JSON file beside the run. Only
 // the nest writes it (atomic rename); ants read it. Nothing else is shared.
+// Time acts on the ground by itself: between writes, every trail evaporates
+// (times RHO per STEP_MS) and the colony gets hungrier (GROWTH per STEP_MS),
+// so whoever reads it sees the ground as it is now.
 import fs from 'node:fs';
 import path from 'node:path';
 
+export const STEP_MS = 250;
+export const RHO = 0.94;
+export const GROWTH = 0.5;
 const FILE = () => path.join(process.env.COLONY_DIR, 'env.json');
 
-export function readEnv() {
+/** The ground at `now`: the last write, aged by the time since. */
+export function readEnv(now = Date.now()) {
+  let env;
   try {
-    return JSON.parse(fs.readFileSync(FILE(), 'utf8'));
+    env = JSON.parse(fs.readFileSync(FILE(), 'utf8'));
   } catch {
-    return { hunger: 0, pheromone: {}, tick: 0 };
+    return { hunger: 6, pheromone: {}, delivered: {}, at: now };
   }
+  const steps = Math.max(0, (now - env.at) / STEP_MS);
+  const decay = RHO ** steps;
+  const pheromone = Object.fromEntries(Object.entries(env.pheromone).map(([f, p]) => [f, p * decay]));
+  return { ...env, pheromone, hunger: Math.min(20, env.hunger + GROWTH * steps), at: now };
 }
 
 export function writeEnv(env) {

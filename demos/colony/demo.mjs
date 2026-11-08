@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runDir } from '../../lib/engine.mjs';
 import { startRun } from '../../lib/run.mjs';
+import { readEnv } from './neurons/env.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const N = (f) => path.join(HERE, 'neurons', f);
@@ -48,8 +49,8 @@ export function buildNetwork(dir, ants, seconds) {
     name: 'colony',
     description: `${ants} ants, ${FOODS.length} food sources, one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, and picks a trail by its pheromone. The nest alone writes the ground (env.json); every ant reads it.`,
     neurons: [
-      { id: 'clock', description: `A tick every ${TICK_MS} ms: time passing, for every ant and for the nest.`, source: true },
-      { id: 'nest', description: 'Feeds on deliveries and lays pheromone on the trail each came from; evaporates every trail on each tick; raises the hunger. Writes env.json, never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
+      { id: 'clock', description: `A tick every ${TICK_MS} ms: each ant's moment to decide.`, source: true },
+      { id: 'nest', description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
       ...antIds.map((id, i) => ({
         id,
         description: `An ant with response threshold ${theta(i)}: forages when the colony is hungry enough for it, follows trails by their pheromone.`,
@@ -63,7 +64,6 @@ export function buildNetwork(dir, ants, seconds) {
       })),
     ],
     links: [
-      { from: 'clock', to: 'nest' },
       ...antIds.map((a) => ({ from: 'clock', to: a })),
       ...antIds.flatMap((a) => FOODS.map((f) => ({ from: a, to: f.id }))),
       ...FOODS.map((f) => ({ from: f.id, to: 'nest' })),
@@ -86,6 +86,7 @@ export async function main({ flags = [], say = console.log } = {}) {
   const ants = Math.max(1, Math.min(200, flag(flags, '--ants', 24)));
   const seconds = Math.max(5, Math.min(600, flag(flags, '--seconds', 45)));
   const dir = runDir('colony');
+  process.env.COLONY_DIR = dir; // readEnv, for the progress lines
   const { file, inputs, antIds, theta } = buildNetwork(dir, ants, seconds);
   say(`${ants} ants, ${FOODS.length} food sources, ${seconds} s. Foods: ${FOODS.map((f) => `${f.id} (${f.about})`).join('; ')}.`);
 
@@ -103,7 +104,7 @@ export async function main({ flags = [], say = console.log } = {}) {
       if (sec === lastShown) return;
       lastShown = sec;
       try {
-        const env = JSON.parse(fs.readFileSync(path.join(dir, 'env.json'), 'utf8'));
+        const env = readEnv();
         const trails = FOODS.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
         say(`${String(sec * 5).padStart(3)} s  hunger ${env.hunger.toFixed(1).padStart(4)}  trails: ${trails}`);
       } catch {
