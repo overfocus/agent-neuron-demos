@@ -31,10 +31,10 @@ export const meta = {
 
 /** The food sources: near and small, middling, far and rich, and one that appears later. */
 export const FOODS = [
-  { id: 'berries', distance: 400, stock: 35, appears: 0, about: 'near, small: runs out early' },
-  { id: 'seeds', distance: 800, stock: 400, appears: 0, about: 'middle distance, plenty' },
+  { id: 'berries', distance: 400, stock: 60, appears: 0, about: 'near, small: runs out part-way' },
+  { id: 'seeds', distance: 1000, stock: 400, appears: 0, about: 'middle distance, plenty' },
   { id: 'carcass', distance: 1400, stock: 400, appears: 0, about: 'far, plenty' },
-  { id: 'honeydew', distance: 450, stock: 400, appears: 0.45, about: 'near, plenty, appears part-way' },
+  { id: 'honeydew', distance: 450, stock: 400, appears: 0.25, about: 'near, plenty, appears a quarter of the way in' },
 ];
 
 export function buildNetwork(dir, ants, seconds) {

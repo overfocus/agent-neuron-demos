@@ -8,8 +8,18 @@ people decide on the engine's desk, each with their own link, with every
 answer recorded with who and why. Watch any of them in 3D with
 [agent-neuron-viz](https://github.com/overfocus/agent-neuron-viz).
 
-**New here? Start with [GETTING-STARTED.md](GETTING-STARTED.md)**: setup in
-five minutes, your first demo, and a shot list per demo for recording them.
+**Try it in one line** (needs Node 22, git and [Rust](https://rustup.rs); run it in an empty folder):
+
+```sh
+git clone https://github.com/overfocus/agent-neuron-demos && cd agent-neuron-demos && npm run setup && npm run watch colony
+```
+
+`setup` fetches the engine and the 3D viewer next to this repo and builds
+them; `watch` starts the viewer, opens a page with the network in 3D and
+every person's desk, and runs the demo. Swap `colony` for `quorum`,
+`backlog`, `spend`, `refunds` or `oncall`. More in
+[GETTING-STARTED.md](GETTING-STARTED.md), with a shot list per demo for
+recording them.
 
 Everything here is invented: the people (Ada, Lin, Sam, Kit), the harbour
 booking app, the patches, the refunds. The agents are small scripts that

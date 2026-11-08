@@ -9,6 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "setup": "node bin/setup.mjs",
+    "watch": "node bin/watch.mjs",
     "demo": "node bin/demo.mjs",
     "doctor": "node bin/doctor.mjs",
     "stage": "node bin/stage.mjs",

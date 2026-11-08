@@ -3,10 +3,33 @@
 From nothing to watching a team of agents and people decide together, in
 about five minutes. Then, a shot list per demo for recording them.
 
-## 1. Set up (once)
+## The one-liner
 
-You need **Node 22** and a **Rust toolchain** ([rustup.rs](https://rustup.rs)):
-the demos run agent-neuron's Rust engine, which is built the first time.
+You need **Node 22**, **git** and a **Rust toolchain** ([rustup.rs](https://rustup.rs)):
+the demos run agent-neuron's Rust engine, which is built the first time. In an
+empty folder:
+
+```sh
+git clone https://github.com/overfocus/agent-neuron-demos && cd agent-neuron-demos && npm run setup && npm run watch colony
+```
+
+`npm run setup` clones agent-neuron and agent-neuron-viz next to this repo,
+installs the viewer and builds the engine (safe to run again). `npm run watch
+<demo>` starts the viewer if it is not running, opens one page with the
+network in 3D and every person's desk, and runs the demo with the invented
+people answering at a pace you can follow. When the run ends the page stays
+up to replay it; Ctrl-C stops everything `watch` started.
+
+```sh
+npm run watch quorum                  # the people answer, every 2 s
+npm run watch backlog -- --pace 3     # slower
+npm run watch quorum -- --live        # you answer, on the desks in the page
+npm run watch colony -- --ants 40     # any demo flag passes through
+```
+
+The rest of this guide takes the same steps one at a time.
+
+## 1. Set up (once), by hand
 
 ```sh
 mkdir agent-neuron && cd agent-neuron
@@ -89,11 +112,17 @@ Every run leaves its trace, live stream and stderr under `runs/<demo>/`.
 ### The stage
 
 ```sh
+npm run watch backlog -- --pace 3
+```
+
+or, to keep the page open between many takes, the same pieces by hand:
+
+```sh
 # terminal 1: the viewer
 cd ../agent-neuron-viz && npm run dev
 # terminal 2: the stage
 npm run stage -- --open                      # http://127.0.0.1:5190/
-# terminal 3: the demos
+# terminal 3: the demos, one take after another
 npm run demo backlog -- --headless --pace 3
 ```
 
@@ -186,6 +215,6 @@ Variant: `--tie`. Lin picks patch-b; Sam's question offers both; Sam says No; no
 1. The 3D view: the clock on the left, the ants, four food sources, the nest on the right. No neuron gives orders.
 2. The first seconds: ants explore; the near berries trail lights up as deliveries reach the nest.
 3. The terminal every 5 s: hunger and the strength of each trail.
-4. Around 15 s the berries run out: that link goes dark, and the traffic moves.
-5. A new near patch (honeydew) appears part-way. Sometimes the colony switches to it; sometimes an older trail keeps the traffic. Both are real colony behaviour; say which one this take shows.
+4. A quarter of the way in, a new near patch (honeydew) appears. Explorers find it while the berries trail is still busy.
+5. The berries run out part-way: that link goes dark, and the traffic moves. Usually (four takes in five) it moves to the honeydew, whose short trip lays the most pheromone; sometimes the seeds trail has taken hold and keeps it. Both are real colony behaviour; say which one this take shows, or run it again.
 6. The table at the end: deliveries per food per 5 s, and the eager ants (low threshold) doing several times the trips of the reluctant ones.
