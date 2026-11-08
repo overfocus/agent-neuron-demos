@@ -13,6 +13,12 @@
 // idle one follows to the same food at once, skipping its own threshold, and
 // never re-broadcasts a recruit it received. The nearest food runs out; a new
 // patch appears halfway through. Watch the traffic move.
+//
+// Three more patches, the drop sites, are drawn by mulberry32 from --seed
+// (default 11): distance 500-1400 ms, stock 200-400, an angle anywhere round
+// the nest, and an appear time inside 0.3-0.8 of the run. Same seed, same
+// schedule, so takes and tests reproduce; --seed 0 means an unseeded draw: a
+// different map every take.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +34,7 @@ export const meta = {
   name: 'colony',
   title: 'The colony: n ants, food, and no one in charge',
   about: 'Response thresholds, pheromone trails and evaporation, with every ant its own neuron and the ground as the only shared state.',
-  variants: ['--ants <n>', '--seconds <s>'],
+  variants: ['--ants <n>', '--seconds <s>', '--seed <n>'],
 };
 
 /**
@@ -46,10 +52,39 @@ export const FOODS = [
 
 const round = (v) => Math.round(v * 10) / 10;
 
+/**
+ * The drop-site draw: three extra patches from `--seed` via mulberry32, each
+ * 500-1400 ms from the nest, 200-400 units, any angle round the nest,
+ * appearing inside 0.3-0.8 of the run. The same seed always draws the same
+ * schedule, so takes and tests reproduce; `--seed 0` leaves the draw to
+ * Math.random: a different map every take.
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const drawDrops = (seed) => {
+  const draw = seed === 0 ? Math.random : mulberry32(seed);
+  return Array.from({ length: 3 }, (_, i) => ({
+    id: `drop-${i + 1}`,
+    distance: Math.round(500 + draw() * 900),
+    stock: Math.round(200 + draw() * 200),
+    angle: draw() * 360,
+    appears: 0.3 + draw() * 0.5,
+    about: 'a seeded drop site, drawn from the run seed',
+  }));
+};
+
 /** Where each neuron sits (decision 0011's `at`): the nest at the origin, food at its distance, ants on a shell round the nest. */
-function mapOf(antIds) {
+function mapOf(antIds, foods) {
   const at = { nest: [0, 0, 0], clock: [-1100, 900, -200] };
-  for (const f of FOODS) {
+  for (const f of foods) {
     const a = (f.angle * Math.PI) / 180;
     at[f.id] = [round(f.distance * Math.cos(a)), round(f.distance * Math.sin(a)), 0];
   }
@@ -84,22 +119,24 @@ function nearestOf(at, antIds, k = 3) {
   );
 }
 
-export function buildNetwork(dir, ants, seconds) {
-  const names = FOODS.map((f) => f.id).join(',');
-  const dists = FOODS.map((f) => f.distance).join(',');
+export function buildNetwork(dir, ants, seconds, seed = 11) {
+  const drops = drawDrops(seed);
+  const foods = [...FOODS, ...drops];
+  const names = foods.map((f) => f.id).join(',');
+  const dists = foods.map((f) => f.distance).join(',');
   const antIds = Array.from({ length: ants }, (_, i) => `ant-${String(i + 1).padStart(2, '0')}`);
   // Thresholds spread from eager (2) to reluctant (14): a colony of
   // individuals, not copies.
   const theta = (i) => (ants === 1 ? 6 : 2 + (12 * i) / (ants - 1)).toFixed(1);
-  const at = mapOf(antIds);
+  const at = mapOf(antIds, foods);
   const neighbours = nearestOf(at, antIds);
   const net = {
     version: 0,
     name: 'colony',
-    description: `${ants} ants, ${FOODS.length} food sources, one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, and picks a trail by its pheromone. The nest alone writes the ground (env.json); every ant reads it.`,
+    description: `${ants} ants, ${foods.length} food sources (three of them drop sites, drawn by seed ${seed}), one nest. No neuron assigns work: each ant decides by its own threshold against the colony's hunger, picks a trail by its pheromone, and recruits its three nearest ants. The nest alone writes the ground (env.json); every ant reads it.`,
     neurons: [
       { id: 'clock', description: `A tick every ${TICK_MS} ms: each ant's moment to decide.`, at: at.clock, source: true },
-      { id: 'nest', at: at.nest, description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
+      { id: 'nest', at: at.nest, description: 'Feeds on deliveries and lays pheromone on the trail each came from (more for a shorter trip). Marks a trail dead when an arrival finds its patch empty. The only writer of env.json; time evaporates the trails and raises the hunger between writes. Never answers.', serve: ['node', N('nest.mjs')], env: ['COLONY_DIR'] },
       ...antIds.map((id, i) => ({
         id,
         at: at[id],
@@ -111,7 +148,7 @@ export function buildNetwork(dir, ants, seconds) {
         serve: ['node', N('ant.mjs'), id, theta(i), names, dists, antIds.join(','), (neighbours[id] ?? []).join(',')],
         env: ['COLONY_DIR'],
       })),
-      ...FOODS.map((f) => ({
+      ...foods.map((f) => ({
         id: f.id,
         at: at[f.id],
         description: `Food, ${f.about}: ${f.stock} units, ${f.distance} ms from the nest${f.appears ? `, appears at ${Math.round(f.appears * seconds)} s` : ''}.`,
@@ -121,8 +158,8 @@ export function buildNetwork(dir, ants, seconds) {
     links: [
       ...antIds.map((a) => ({ from: 'clock', to: a })),
       ...antIds.flatMap((a) => (neighbours[a] ?? []).map((b) => ({ from: a, to: b }))),
-      ...antIds.flatMap((a) => FOODS.map((f) => ({ from: a, to: f.id }))),
-      ...FOODS.map((f) => ({ from: f.id, to: 'nest' })),
+      ...antIds.flatMap((a) => foods.map((f) => ({ from: a, to: f.id }))),
+      ...foods.map((f) => ({ from: f.id, to: 'nest' })),
     ],
   };
   const file = path.join(dir, 'colony.network.json');
@@ -130,7 +167,14 @@ export function buildNetwork(dir, ants, seconds) {
   const ticks = Math.floor((seconds * 1000) / TICK_MS);
   const inputs = path.join(dir, 'colony.inputs.jsonl');
   fs.writeFileSync(inputs, Array.from({ length: ticks }, (_, n) => JSON.stringify({ at: n * TICK_MS, source: 'clock', payload: { tick: n } })).join('\n') + '\n');
-  return { file, inputs, antIds, theta };
+  return {
+    file,
+    inputs,
+    antIds,
+    theta,
+    foods,
+    drops: drops.map((d) => ({ id: d.id, appear: Math.round(d.appears * seconds * 10) / 10 })),
+  };
 }
 
 const flag = (flags, name, dflt) => {
@@ -141,10 +185,13 @@ const flag = (flags, name, dflt) => {
 export async function main({ flags = [], say = console.log } = {}) {
   const ants = Math.max(1, Math.min(200, flag(flags, '--ants', 24)));
   const seconds = Math.max(5, Math.min(600, flag(flags, '--seconds', 45)));
+  const seedReq = flag(flags, '--seed', 11);
+  const seed = Number.isFinite(seedReq) && seedReq >= 0 ? Math.floor(seedReq) : 11; // 0: an unseeded draw
   const dir = runDir('colony');
   process.env.COLONY_DIR = dir; // readEnv, for the progress lines
-  const { file, inputs, antIds, theta } = buildNetwork(dir, ants, seconds);
-  say(`${ants} ants, ${FOODS.length} food sources, ${seconds} s. Foods: ${FOODS.map((f) => `${f.id} (${f.about})`).join('; ')}.`);
+  const { file, inputs, antIds, theta, foods, drops } = buildNetwork(dir, ants, seconds, seed);
+  say(`${ants} ants, ${foods.length} food sources (3 of them drop sites drawn by seed ${seed}${seed === 0 ? ', unseeded: a different map every take' : ''}), ${seconds} s.`);
+  say(`  Foods: ${foods.map((f) => `${f.id} (${f.about})`).join('; ')}.`);
 
   let lastShown = -1;
   const run = startRun({
@@ -162,7 +209,7 @@ export async function main({ flags = [], say = console.log } = {}) {
       lastShown = sec;
       try {
         const env = readEnv();
-        const trails = FOODS.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
+        const trails = foods.map((f) => `${f.id} ${(env.pheromone[f.id] ?? 0).toFixed(1).padStart(5)}`).join('  ');
         say(`${String(sec * 5).padStart(3)} s  hunger ${env.hunger.toFixed(1).padStart(4)}  trails: ${trails}`);
       } catch {
         // the nest has not written yet
@@ -178,11 +225,11 @@ export async function main({ flags = [], say = console.log } = {}) {
   const windows = Math.ceil(seconds / 5);
   say('');
   say('Deliveries per 5 seconds, by food (the traffic moves when a trail runs dry or a better one appears):');
-  say(`  ${'s'.padStart(5)}  ${FOODS.map((f) => f.id.padStart(9)).join('')}  foragers`);
+  say(`  ${'s'.padStart(5)}  ${foods.map((f) => f.id.padStart(9)).join('')}  foragers`);
   const table = [];
   for (let w = 0; w < windows; w++) {
     const inW = deliveries.filter((d) => Math.floor((d.t - t0) / 5000) === w);
-    const row = FOODS.map((f) => inW.filter((d) => d.food === f.id).length);
+    const row = foods.map((f) => inW.filter((d) => d.food === f.id).length);
     table.push(row);
     say(`  ${String(w * 5).padStart(5)}  ${row.map((n) => String(n).padStart(9)).join('')}  ${String(new Set(inW.map((d) => d.ant)).size).padStart(8)}`);
   }
@@ -193,8 +240,8 @@ export async function main({ flags = [], say = console.log } = {}) {
   const reluctant = antIds.slice(-third).reduce((s, a) => s + trips[a], 0) / third;
   say('');
   say(`Trips per ant: the eagerest third (threshold ${theta(0)}-${theta(third - 1)}) averaged ${eager.toFixed(1)}, the most reluctant third (${theta(ants - third)}-${theta(ants - 1)}) ${reluctant.toFixed(1)}.`);
-  const last = table.slice(-2).reduce((acc, row) => acc.map((n, i) => n + row[i]), FOODS.map(() => 0));
-  const won = FOODS[last.indexOf(Math.max(...last))];
+  const last = table.slice(-2).reduce((acc, row) => acc.map((n, i) => n + row[i]), foods.map(() => 0));
+  const won = foods[last.indexOf(Math.max(...last))];
   say(`At the end the colony was mostly on ${won.id} (${won.about}). Runs differ: a trail that takes hold early can keep the traffic even after a closer source appears, as real colonies do.`);
   say(`${deliveries.length} deliveries in all. Trace: ${run.files.trace}`);
   return { code, deliveries, table, eager, reluctant, won: won.id, events: run.events.length };
