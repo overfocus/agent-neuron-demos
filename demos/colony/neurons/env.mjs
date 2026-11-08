@@ -1,31 +1,27 @@
-// The colony's environment (stigmergy): one JSON file beside the run. Only
-// the nest writes it (atomic rename); ants read it. Nothing else is shared.
-// Time acts on the ground by itself: between writes, every trail evaporates
-// (times RHO per STEP_MS) and the colony gets hungrier (GROWTH per STEP_MS),
-// so whoever reads it sees the ground as it is now. Two maps ride beside the
-// trails: lefts, what each food last said it had (keyed by food), and dead,
-// the instant of the first arrival that found a patch empty - a trail marked
-// dead on the ground, which pick() then weighs 0.
+// The colony's env.json: hunger, what each food last said it had (lefts),
+// and the instant of a trail's first emptied arrival (dead). The pheromone is
+// NOT in here any more: the trails are the engine's keep now - the network
+// file's ground block (agent-neuron decision 0012) has the nest lay on places
+// and the engine both evaporate and route by them. Time acts on this file by
+// itself: between writes the colony gets hungrier (GROWTH per STEP_MS), so
+// whoever reads it sees the ground as it is now.
 import fs from 'node:fs';
 import path from 'node:path';
 
 export const STEP_MS = 250;
-export const RHO = 0.94;
 export const GROWTH = 0.5;
 const FILE = () => path.join(process.env.COLONY_DIR, 'env.json');
 
-/** The ground at `now`: the last write, aged by the time since. */
+/** The ground at `now`: the last write, with the hunger grown since. */
 export function readEnv(now = Date.now()) {
   let env;
   try {
     env = JSON.parse(fs.readFileSync(FILE(), 'utf8'));
   } catch {
-    return { hunger: 6, pheromone: {}, delivered: {}, dead: {}, lefts: {}, at: now };
+    return { hunger: 6, lefts: {}, dead: {}, at: now };
   }
   const steps = Math.max(0, (now - env.at) / STEP_MS);
-  const decay = RHO ** steps;
-  const pheromone = Object.fromEntries(Object.entries(env.pheromone).map(([f, p]) => [f, p * decay]));
-  return { ...env, pheromone, hunger: Math.min(20, env.hunger + GROWTH * steps), at: now };
+  return { ...env, hunger: Math.min(20, env.hunger + GROWTH * steps), at: now };
 }
 
 export function writeEnv(env) {
