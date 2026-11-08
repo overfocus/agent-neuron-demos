@@ -62,6 +62,8 @@ if (await answering(VIZ_URL)) {
   // ask for them now, so the page attaches the moment it opens.
   const base = new URL(VIZ_URL).origin;
   await fetch(`${base}/src/main.ts`).catch(() => {});
+  // ...and start its engine (the first describe spawns neuron-engine mcp).
+  await fetch(`${base}/api/describe?file=spec/examples/alerts.network.json`).catch(() => {});
   await sleep(3000);
 }
 
