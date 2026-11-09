@@ -1,0 +1,22 @@
+{
+  "version": 0,
+  "name": "companies",
+  "description": "One workflow across two company boundaries. Our quay office files every arrival (an effect of ours, kept whatever happens next) and engages the pilot office: the hire is our own procedure, placed by the peers file onto their engine, there committed - an effect outside our walls, and their whole team answers as one wrapper (triage, the chart room on a third engine, the boarding call). Kit decides on our desk, and the partners never see that page. A partner that goes dark after the hire started is unknown: may or may not have happened, never guessed, never retried. The house rules never name a company; the peers side file does.",
+  "neurons": [
+    { "id": "arrival", "description": "A vessel arrives, needing exceptions cleared.", "source": true },
+    { "id": "classify", "description": "Our intake desk: sorts the arrival, hands it on.", "run": ["node", "neurons/ours/classify.mjs"] },
+    { "id": "file", "description": "Files the arrival in our own ledger. An effect of ours, kept whatever happens next.", "run": ["node", "neurons/ours/file.mjs"], "env": ["DEMO_DIR"], "effect": true },
+    { "id": "engage", "description": "The hire: our own procedure, placed by the peers file onto the pilot office's engine, there committed. An effect: started once, never guessed, never retried; if the office goes dark after it started, the outcome is unknown.", "run": ["node", "neurons/ours/engage.mjs"], "effect": true, "timeout": 30000 },
+    { "id": "pilotage", "description": "The pilot office as one wrapper: their whole team is behind it - triage, the chart room (a third engine), the boarding call. Their answer carries every mark back to our desk, and becomes our harbourmaster's ask.", "network": "pilot.network.json", "timeout": 30000 },
+    { "id": "gate", "description": "Kit, our harbourmaster: clear the arrival with the pilot office, or hold. On our desk; the partners never see this page.", "human": true, "timeout": 1800000 },
+    { "id": "act", "description": "Carries out the clearance. An effect.", "run": ["node", "neurons/ours/act.mjs"], "env": ["DEMO_DIR"], "effect": true }
+  ],
+  "links": [
+    { "from": "arrival", "to": "classify" },
+    { "from": "classify", "to": "file" },
+    { "from": "classify", "to": "engage" },
+    { "from": "classify", "to": "pilotage" },
+    { "from": "pilotage", "to": "gate" },
+    { "from": "gate", "to": "act" }
+  ]
+}

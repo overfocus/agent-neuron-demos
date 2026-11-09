@@ -40,6 +40,25 @@ node build-data-backlog.mjs ../runs/backlog              # data-backlog.js from 
 ./.venv/bin/python render.py --html composition-backlog.html --data data-backlog.js --mux --out out/backlog.mp4
 ```
 
+## Render the companies
+
+```sh
+node build-data-companies.mjs ../runs/companies              # data-companies.js from a fresh run
+./.venv/bin/python render.py --html composition-companies.html --data data-companies.js --frames frames-companies
+./.venv/bin/python sound.py
+./.venv/bin/python render.py --html composition-companies.html --data data-companies.js --frames frames-companies --skip-frames --mux --out out/companies.mp4
+```
+
+The companies' compiler reads the run's own records too — both takes
+(`wire/` and `house/` streams, the `desk answer:` lines, the journal and the
+actions logs, each partner's own stderr log for the port it really bound) and
+the tracked network files beside the repo for the topology. It re-stamps one
+merged timeline: the second arrival's chain shifts as a group to after the
+first arrival's clearance (they really overlapped), the in-house take is
+re-based after take 1 ends, and the wrapper's inner stations are interpolated
+around their composed answer — the driver hears only the marks, and the
+composition says so on screen.
+
 The backlog's compiler reads the run's own records: the stream (rules verdicts,
 landed/scheduled/record answers, the budget refusal), `landed.jsonl`, and the
 desk's `desk answer:` lines for the ledger — who decided, what, and each

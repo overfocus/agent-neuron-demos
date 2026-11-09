@@ -1,0 +1,2 @@
+{"at": 0, "source": "arrival", "payload": {"vessel": "ARR-1", "draft": 4.1, "cargo": "fuel", "due": "04:20"}}
+{"at": 5000, "source": "arrival", "payload": {"vessel": "ARR-2", "draft": 4.6, "cargo": "chemicals", "due": "09:10"}}

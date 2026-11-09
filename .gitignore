@@ -4,6 +4,7 @@ runs/
 .claude/settings.local.json
 video/.venv/
 video/frames/
+video/frames-companies/
 video/out/
 video/soundtrack.wav
 

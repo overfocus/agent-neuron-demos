@@ -58,6 +58,27 @@ test('oncall: the stale ask is withdrawn and its late answer refused', async () 
   assert.deepEqual(r.actions, ['payments: roll back deploy 2026.11.08-3']);
 });
 
+test('companies: the hire crosses two boundaries and returns composed; the desk killed mid-hire is unknown; the same rules rebuild in-house', async () => {
+  const r = await run('companies');
+  assert.equal(r.code, 0);
+  // The composed answer carries every office's mark: ours, the pilot office's
+  // team, and the chart room two boundaries deep.
+  assert.ok(r.wire.answer && r.wire.answer.boarded === true && r.wire.answer.room === 'chart' && r.wire.answer.office === 'pilot-office');
+  assert.ok(r.wire.answer.chart.includes('04:20'), JSON.stringify(r.wire.answer));
+  // ARR-1 cleared on Kit's word; ARR-2's hire went unknown and Kit held.
+  assert.deepEqual(r.wire.actions, ['ARR-1, fuel, pilot meets at 04:20']);
+  assert.deepEqual(r.wire.desk.map((a) => a.option), ['clear', 'hold']);
+  assert.equal(r.wire.unknowns, true);
+  // Our own ledger kept both arrivals, whatever the border did.
+  assert.equal(r.wire.journal.length, 2);
+  // Their team answered even with their own desk dark: the boundary held.
+  assert.ok(r.wire.answer2 && r.wire.answer2.boarded === true);
+  assert.deepEqual([r.wire.code, r.house.code], [0, 0]);
+  // Take two: no peers file at all - the same rules clear both in-house.
+  assert.equal(r.house.actions.length, 2);
+  assert.ok(r.house.answer && r.house.answer.boarded === true);
+});
+
 test('colony: ants forage without a scheduler, and the eager ones do more of it', async () => {
   const r = await run('colony', { flags: ['--ants', '12', '--seconds', '15'] });
   assert.equal(r.code, 0);

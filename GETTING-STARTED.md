@@ -89,6 +89,7 @@ npm run demo backlog -- --headless # 15 bugs, 5 requirements, 2 architecture cha
 npm run demo spend -- --headless   # the manager lowers the budget, as a policy diff
 npm run demo refunds -- --headless # an irreversible payment, a duplicate, a crash nobody can call
 npm run demo oncall -- --headless  # a decision that goes stale before it is made
+npm run demo companies -- --headless # four engines, two companies: partners that go dark
 npm run demo colony                # 24 ants, food, a nest, and no one in charge
 npm test                           # every demo, its outcome asserted
 ```
@@ -208,6 +209,17 @@ Variant: `--tie`. Lin picks patch-b; Sam's question offers both; Sam says No; no
 3. A newer payments alert arrives: error rate since a deploy. The first ask is **withdrawn** from Kit's desk, and a new one (roll back) takes its place.
 4. Kit answers the old one anyway: refused, `410 ... withdrawn`. *A decision does not outlive the situation it was about.*
 5. Kit holds search and rolls back payments; `act` does it.
+
+#### companies (≈ 15 s at `--pace 3`; four engines in the same go)
+
+`npm run demo companies -- --headless --pace 3`
+
+1. The partners come online before the run: `the chart room: online at 127.0.0.1:...`, `the pilot office's dispatch desk: online at ...`, `the pilot office: online at ...` - three separate engine processes, each printed by its own office. *The house rules never name a company; the peers side file is the whole deployment.*
+2. ARR-1 flows: `the hire is committed on their desk (ARR-1 engaged)` - the hire is our own procedure, executed on the pilot office's engine because the peers file placed it there. Their team answers `composed (pilot-office, chart, boarded)`: the chart room's tide crossed a second boundary.
+3. Kit's desk gets the ask the pilot office framed ("Clear ARR-1 with the pilot office?"); Kit clears it on OUR page. The partners never saw the desk.
+4. ARR-2 arrives; the hire crosses - and the dispatch desk is killed mid-hire (`the pilot office's dispatch desk goes dark mid-hire`). The outcome lands `unknown`: may or may not have happened, never guessed, never retried.
+5. Their team answers ANYWAY (`their team answers anyway - with their own desk dark`): the composed ask still arrives. Kit HOLDS it (`no clearance follows: the vessel whose hire went unknown was held`). Our ledger stands: both arrivals filed at our desk.
+6. Take two follows: no peers file at all, the same house rules file - both vessels clear in-house. *The workflow was built across the boundary, torn down mid-hire, and rebuilt without touching the rules.*
 
 #### colony — the video shot list (`--ants 40 --seconds 60 --seed 11`)
 
