@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>companies — rendered</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050607; overflow: hidden; }
+  #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  .cap { position: absolute; left: 120px; right: 620px; color: #e8f4ec;
+         font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+         font-weight: 700; letter-spacing: -0.01em; opacity: 0; will-change: opacity, transform; }
+  .cap .accent { color: #59f77c; }
+  .cap .cyan { color: #4ad6ff; }
+  .cap .amber { color: #ffb347; }
+  .cap .red { color: #ff6f59; }
+  .cap .dim { color: #8fa89a; font-weight: 600; }
+  .cap .line { display: block; }
+  .cap.dim2 { color: #8fa89a; }
+  #endcard { position: absolute; inset: 0; display: flex; flex-direction: column;
+             justify-content: center; align-items: flex-start; padding: 0 160px; opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<div style="position:absolute; inset:0; pointer-events:none">
+  <div class="cap" id="cap-hook"     style="top: 300px; font-size: 84px; line-height: 1.2;"></div>
+  <div class="cap" id="cap-partner"  style="top: 78px; font-size: 36px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-file"     style="top: 916px; font-size: 38px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-hire"     style="top: 132px; font-size: 44px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-inside"   style="top: 936px; font-size: 38px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-marks"    style="top: 132px; font-size: 46px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-desk"     style="top: 96px; font-size: 44px; line-height: 1.35;"></div>
+  <div class="cap" id="cap-second"   style="top: 952px; font-size: 38px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-dark"     style="top: 128px; font-size: 56px; line-height: 1.28; left: 240px; right: 700px;"></div>
+  <div class="cap" id="cap-still"    style="top: 900px; font-size: 42px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-house"    style="top: 40px; font-size: 46px; line-height: 1.3;"></div>
+  <div class="cap" id="cap-sum"      style="top: 104px; font-size: 42px; line-height: 1.5; left: 240px; right: 240px;"></div>
+  <div id="endcard"></div>
+</div>
+<script>
+  // The rendered companies: the same pipeline as the colony and the backlog —
+  // scenes as pure functions of time over a frozen run. t in, picture out.
+  const Q = new URLSearchParams(location.search);
+  document.write(`<script src="${Q.get('data') ?? 'data-companies.js'}"><\/script>`);
+</script>
+<script>
+'use strict';
+const D = window.COMPANIES;
+const FACTS = D.facts;
+const B = D.beats;
+const RUN = B.houseEnd;
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, u) => a + (b - a) * u;
+const win = (a, b, t) => { const u = clamp((t - a) / Math.max(1e-9, b - a), 0, 1); return u * u * (3 - 2 * u); };
+const rise = win, fade = (a, b, t) => 1 - win(a, b, t);
+
+const GRAIN = (() => {
+  const rnd = ((a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; })(7);
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const g = c.getContext('2d'), img = g.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 116 + Math.floor(rnd() * 18); img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 10; }
+  g.putImageData(img, 0, 0); return c;
+})();
+
+// ---------- the run's own beats decide the piece list ----------
+// Nine named pieces over the merged axis (take 1, then take 2 re-based).
+const chart2T = D.items[1].stations.find((s) => s.s === 'chart').t;
+const STOPS = [0, B.fanoutT, B.hireT, B.composedT, B.actT, B.arr2T, B.fanout2T, chart2T, B.wireEnd, RUN];
+const DURS = [6.2, 3.0, 2.9, 2.9, 3.0, 2.5, 3.0, 3.1, 4.2];
+const NAMES = ['trails', 'approach', 'dry-lens', 'post-dry', 'recruit', 'pre-drop', 'drop-lens', 'reroute', 'inhouse'];
+function buildSegments() {
+  const segs = [];
+  let v = 8.6, c = 0;
+  for (let i = 0; i < DURS.length; i++) {
+    const target = i + 1 < STOPS.length ? STOPS[i + 1] : RUN;
+    const c1 = Math.max(c + 250, Math.round(target));
+    segs.push({ name: NAMES[i], v0: v, v1: v + DURS[i], c0: c, c1: Math.min(c1, RUN) });
+    v += DURS[i]; c = segs[i].c1;
+  }
+  window.PLAY_END = v;
+  return segs;
+}
+const SEG = buildSegments();
+const SEG_BY = Object.fromEntries(SEG.map((s) => [s.name, s]));
+const the = (n) => SEG_BY[n] ?? SEG[SEG.length - 1];
+const PLAY_END = 39.4;
+function colonyT(vt) {
+  if (vt < SEG[0].v0) return 0;
+  for (const s of SEG) if (vt <= s.v1) {
+    const u = clamp((vt - s.v0) / (s.v1 - s.v0), 0, 1);
+    return lerp(s.c0, s.c1, u);
+  }
+  return SEG[SEG.length - 1].c1;
+}
+const videoT = (ct) => {
+  if (ct < SEG[0].c0) return SEG[0].v0;
+  for (const s of SEG) if (ct < s.c1) return lerp(s.v0, s.v1, (ct - s.c0) / (s.c1 - s.c0));
+  return SEG[SEG.length - 1].v1;
+};
+window.mapColonyToVideo = videoT;
+
+// ---------- the map ----------
+const BG = '#050607', INK = '#e8f4ec', GREEN = '#59f77c', CYAN = '#4ad6ff', AMBER = '#ffb347', RED = '#ff6f59', DEAD = '#5b6a63';
+const FONT = (w, px) => `${w} ${px}px -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+const PORT_OF = Object.fromEntries((FACTS.engines ?? []).filter((e) => e.port).map((e) => [e.label, e.port]));
+const PORT = (label) => (PORT_OF[label] ? `127.0.0.1:${PORT_OF[label]}` : '');
+
+// Take 1: four panels and two boundary lines. Take 2: one wide panel.
+const PANELS = [
+  { x: 60, y: 150, w: 580, h: 800, title: 'THE QUAY OFFICE', sub: 'our run — the house rules', portLabel: null, ours: true },
+  { x: 760, y: 150, w: 400, h: 490, title: 'THE PILOT OFFICE', sub: 'their team, one wrapper', portLabel: 'the pilot office', ours: false },
+  { x: 760, y: 700, w: 400, h: 250, title: 'THE DISPATCH DESK', sub: "their second engine", portLabel: "the pilot office's dispatch desk", ours: false, desk: true },
+  { x: 1330, y: 250, w: 250, h: 280, title: 'THE CHART ROOM', sub: 'their supplier', portLabel: 'the chart room', ours: false, narrow: true },
+];
+const BOUNDS = [700, 1300];
+const inhousePanel = { x: 60, y: 150, w: 1500, h: 800, title: 'THE SAME HOUSE RULES', sub: 'no peers file at all — everything below our own roof' };
+
+const st = (s) => {
+  const W = { arrival: [150, 300], classify: [300, 300], file: [185, 470], qengage: [415, 470], pilotage: [300, 655],
+              gate: [250, 845], act: [440, 845], desk: [965, 815], triage: [875, 280], board: [1060, 500], chart: [1450, 390] };
+  return W[s] ?? W.pilotage;
+};
+const LH = { arrival: [150, 300], classify: [300, 300], file: [185, 470], qengage: [470, 470], pilotage: [300, 655],
+             gate: [250, 845], act: [440, 845], triage: [560, 560], chart: [700, 655], board: [840, 560] };
+const coord = (s, inhouse) => ((inhouse ? LH[s] : st(s)) ?? st(s));
+
+// ---------- legs: what the fan-out really started ----------
+// From each arrival's stations: the file leg, the hire leg (crossing once),
+// the ask leg (crossing twice: into the wrapper, then to the chart room).
+function legs(item, inhouse) {
+  const find = (s, tag) => item.stations.find((x) => x.s === s && (tag === undefined ? !x.unknown && !x.cleared && !x.quiet && !x.chose && !x.ask : tag === 'unk' ? x.unknown : tag === 'chose' ? Boolean(x.chose) : tag === 'ask' ? x.ask : true));
+  const fan = Math.min(...item.stations.filter((x) => ['file', 'pilotage'].includes(x.s) && !x.marked).map((x) => x.t));
+  const file = find('file');
+  const eng = item.stations.find((x) => x.s === 'engage' && x.engaged);
+  const engT = eng ? eng.t : null;
+  const unk = find('engage', 'unk');
+  const ask = item.stations.filter((x) => ['triage', 'chart', 'board'].includes(x.s));
+  const pilotHome = item.stations.find((x) => x.s === 'pilotage' && x.t > 1000);
+  const gAsk = item.stations.find((x) => x.s === 'gate' && x.ask);
+  const chose = item.stations.find((x) => x.s === 'gate' && x.chose);
+  const actEnd = item.stations.find((x) => x.s === 'act' && (x.cleared || x.quiet));
+  return {
+    item, inhouse, fan, file, engT, unk, ask, pilotHome, gAsk, chose, actEnd,
+    cls: item.stations.find((x) => x.s === 'classify'),
+    pilotNode: find('pilotage'),
+  };
+}
+
+// ---------- canvas ----------
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const grainPat = ctx.createPattern(GRAIN, 'repeat');
+const lerp2 = (a, b, u) => [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
+const ease = (u) => u * u * (3 - 2 * u);
+let DIM = 1; // the frame's own dim: canvas sub-draws that set globalAlpha must inherit it
+
+function drawPanel(p, t, opt = {}) {
+  const e = (opt.alpha ?? 1) * DIM;
+  if (e <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = e;
+  const dark = opt.dark ?? false;
+  ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 14);
+  ctx.fillStyle = dark ? 'rgba(9,10,11,0.9)' : '#0a0f0d';
+  ctx.fill();
+  ctx.strokeStyle = dark ? 'rgba(255,111,89,0.5)' : p.ours ? 'rgba(89,247,124,0.35)' : 'rgba(74,214,255,0.3)';
+  ctx.lineWidth = 2; ctx.stroke();
+  if (dark) {                                                     // the crack: an engine that died mid-call
+    ctx.beginPath(); ctx.moveTo(p.x + p.w * 0.7, p.y + 8);
+    ctx.lineTo(p.x + p.w * 0.66, p.y + p.h * 0.3); ctx.lineTo(p.x + p.w * 0.74, p.y + p.h * 0.34); ctx.lineTo(p.x + p.w * 0.68, p.y + p.h * 0.62);
+    ctx.strokeStyle = 'rgba(255,111,89,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  ctx.fillStyle = dark ? 'rgba(255,111,89,0.85)' : p.ours ? 'rgba(89,247,124,0.85)' : 'rgba(74,214,255,0.85)';
+  ctx.font = FONT(700, 19);
+  ctx.fillText(p.title, p.x + 20, p.y + 34);
+  ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(500, 15);
+  ctx.fillText(p.sub, p.x + 20, p.y + 56);
+  if (dark) {
+    ctx.fillStyle = 'rgba(255,111,89,0.9)'; ctx.font = FONT(700, 22);
+    ctx.fillText('OFFLINE', p.x + p.w / 2 - 44, p.y + p.h - 22);
+  }
+  if (p.portLabel) {
+    const port = PORT(p.portLabel);
+    const line = p.narrow ? p.y + 76 : p.y + 34;
+    ctx.fillStyle = 'rgba(143,168,154,0.9)'; ctx.font = FONT(500, 14);
+    ctx.fillText(port || '', p.x + p.w - 14 - ctx.measureText(port || '').width, line);
+  }
+  ctx.restore();
+}
+
+function drawBoundaries(t, opt = {}) {
+  for (const [i, x] of BOUNDS.entries()) {
+    const e = rise(4.4 + i * 0.6, 4.9 + i * 0.6, t) * (opt.alpha ?? 1) * DIM;
+    if (e <= 0) continue;
+    ctx.save(); ctx.globalAlpha = e;
+    const pulse = (opt.pulse?.[i] ?? 0);
+    ctx.strokeStyle = pulse > 0 ? `rgba(255,179,71,${0.25 + 0.5 * pulse})` : 'rgba(143,168,154,0.25)';
+    ctx.lineWidth = pulse > 0 ? 3 : 2;
+    ctx.setLineDash([3, 9]);
+    ctx.beginPath(); ctx.moveTo(x, 130); ctx.lineTo(x, 970); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.save(); ctx.translate(x - 8, 105); ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = 'rgba(143,168,154,0.6)'; ctx.font = FONT(700, 15);
+    ctx.fillText('THE BOUNDARY', 0, 0); ctx.restore();
+    if (pulse > 0) {
+      ctx.beginPath(); ctx.arc(x, opt.pulseY?.[i] ?? 540, 12 + 34 * (1 - pulse), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,179,71,${(0.7 * pulse)})`; ctx.lineWidth = 3; ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawNodes(t, ct, opt = {}) {
+  const inhouse = opt.inhouse ?? false;
+  const list = inhouse
+    ? ['arrival', 'classify', 'file', 'qengage', 'pilotage', 'triage', 'chart', 'board', 'gate', 'act']
+    : ['arrival', 'classify', 'file', 'qengage', 'pilotage', 'desk', 'triage', 'board', 'chart', 'gate', 'act'];
+  const k = opt.alpha ?? 1;
+  for (const nid of list) {
+    const nodeE = rise(4.0 + (coord(nid, inhouse)[0] / 900), 4.3 + (coord(nid, inhouse)[0] / 900), t);
+    if (nodeE <= 0) continue;
+    const [x, y] = coord(nid, inhouse);
+    const desk = nid === 'desk';
+    const dark = desk && (opt.deskDark ?? false);
+    const isHuman = nid === 'gate';
+    const placed = nid === 'qengage' ? { label: inhouse ? 'ours now' : 'on: their desk' } : null;
+    const hidden = desk && inhouse;
+    if (hidden) continue;
+    ctx.save(); ctx.globalAlpha = k * nodeE * DIM;
+    const r = desk ? 22 : isHuman ? 24 : 15;
+    ctx.beginPath(); ctx.arc(x, y, r * nodeE, 0, Math.PI * 2);
+    ctx.fillStyle = dark ? '#0c0708' : '#101513'; ctx.fill();
+    ctx.strokeStyle = dark ? 'rgba(255,111,89,0.85)' : isHuman ? 'rgba(74,214,255,0.75)' : nid === 'pilotage' ? 'rgba(255,179,71,0.7)' : 'rgba(143,168,154,0.55)';
+    ctx.lineWidth = 2; ctx.stroke();
+    if (placed) {
+      ctx.strokeStyle = 'rgba(255,179,71,0.5)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, r + 6, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,179,71,0.85)'; ctx.font = FONT(600, 12);
+      ctx.fillText(placed.label, x - 40, y + r + 26);
+    }
+    const flag = nid === 'file' || nid === 'act' || (desk && !dark);
+    if (flag) { ctx.fillStyle = dark ? 'rgba(143,168,154,0.6)' : AMBER; ctx.font = FONT(700, 13); ctx.fillText('⚑', x - (nid === 'file' ? 4 : 6), y - r - 6); }
+    // breathing: the desk waits on Kit
+    if (isHuman && opt.breath) {
+      const ph = (ct / 300) % (Math.PI * 2);
+      ctx.beginPath(); ctx.arc(x, y, r + 5 + 4 * Math.sin(ph), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(74,214,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    ctx.fillStyle = dark ? 'rgba(255,111,89,0.9)' : 'rgba(143,168,154,0.9)'; ctx.font = FONT(600, 13);
+    const label = nid === 'qengage' ? 'engage' : nid === 'desk' ? (dark ? 'desk — dark' : 'desk ⚑') : nid;
+    ctx.fillText(label, x - (label.length * 3.4), y + r + 17);
+    ctx.restore();
+  }
+}
+
+function arc(a, b, t0, t1, ct, color, tag) {
+  if (ct <= t0 || ct >= t1) return null;
+  const u = ease(clamp((ct - t0) / (t1 - t0), 0, 1));
+  const [x0, y0] = a, [x1, y1] = b;
+  const mx = (x0 + x1) / 2, my = (y0 + y1) / 2 - Math.min(120, 30 + Math.abs(x1 - x0) * 0.16);
+  const q = (v) => (1 - v) * (1 - v) * y0 + 2 * (1 - v) * v * my + v * v * y1;
+  const px = (1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * mx + u * u * x1;
+  const py = q(u);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1);
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  return { x: px, y: py };
+}
+
+function chip(x, y, label, col, dim) {
+  const w = Math.max(52, label.length * 7.7 + 18);
+  ctx.beginPath(); ctx.roundRect(x - w / 2, y - 13, w, 26, 7);
+  ctx.fillStyle = 'rgba(13,20,17,0.97)'; ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = col; ctx.font = FONT(700, 13);
+  const tw = ctx.measureText(label).width;
+  ctx.fillText(label, x - tw / 2, y + 4);
+  if (dim) { ctx.fillStyle = dim; ctx.beginPath(); ctx.arc(x + w / 2 - 7, y - 11, 4.5, 0, Math.PI * 2); ctx.fill(); }
+}
+
+function drawLegs(ct, opt = {}) {
+  const inhouse = opt.inhouse ?? false;
+  const groups = inhouse ? D.house.items : D.items;
+  for (const item of groups) {
+    const L = legs(item, inhouse);
+    const born = rise(L.item.tIn - 120, L.item.tIn + 260, ct);
+    if (born <= 0) continue;
+    const id = item.vessel;
+    const [cx, cy] = coord('classify', inhouse);
+    // intake
+    const a = arc(coord('arrival', inhouse), [cx, cy], L.item.tIn, L.cls?.t ?? L.item.tIn + 200, ct, 'rgba(232,244,236,0.8)');
+    if (a) chip(a.x, a.y, id, 'rgba(232,244,236,0.9)');
+    // the file leg — ours, kept
+    if (L.file) {
+      const done = ct >= L.file.t;
+      const p = arc([cx, cy], coord('file', inhouse), L.fan, Math.max(L.file.t, L.fan + 400), ct, 'rgba(143,168,154,0.7)');
+      if (p) chip(p.x, p.y, id, 'rgba(143,168,154,0.8)');
+      if (done) {
+        const age = ct - L.file.t;
+        if (age < 800) {
+          ctx.beginPath(); ctx.arc(coord('file', inhouse)[0], coord('file', inhouse)[1], 18 + 20 * (age / 800), 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(89,247,124,${(0.8 * (1 - age / 800)).toFixed(2)})`; ctx.lineWidth = 2; ctx.stroke();
+        }
+        if (age < 400) chip(coord('file', inhouse)[0], coord('file', inhouse)[1] - 26, `${id} filed`, GREEN);
+      }
+    }
+    // the hire leg — crossings over the boundary, docked pulse, the answer home
+    const deskC = coord('desk', inhouse);
+    const homeC = coord('qengage', inhouse);
+    if (!inhouse) {
+      if (L.engT) {
+        const dock = arc([cx, cy], deskC, L.fan - 60, Math.min(L.fan + 900, L.engT), ct, 'rgba(255,179,71,0.9)');
+        if (dock) chip(dock.x, dock.y, `${id} hire`, AMBER);
+        const live = dock ?? (ct >= Math.min(L.fan + 900, L.engT) && ct < L.engT ? deskC : null);
+        if (live && opt.deskDark) {                          // dying mid-hire
+          chip(deskC[0], deskC[1], `${id} hire`, RED, RED);
+          const age = ct - (opt.unknownT ?? 0);
+          if (age >= 0 && age < 700) {
+            ctx.beginPath(); ctx.moveTo(deskC[0] - 12, deskC[1] - 12); ctx.lineTo(deskC[0] + 12, deskC[1] + 12);
+            ctx.moveTo(deskC[0] + 12, deskC[1] - 12); ctx.lineTo(deskC[0] - 12, deskC[1] + 12);
+            ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.stroke();
+          }
+        }
+        if (ct >= L.engT && ct < L.engT + 900) {
+          const age = ct - L.engT;
+          ctx.beginPath(); ctx.arc(deskC[0], deskC[1], 26 + 22 * (age / 900), 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255,179,71,${(0.7 * (1 - age / 900)).toFixed(2)})`; ctx.lineWidth = 2; ctx.stroke();
+          if (age < 300) ctx.fillStyle = AMBER, ctx.font = FONT(700, 14), ctx.fillText('committed', deskC[0] - 34, deskC[1] - 42);
+        }
+        const home = arc(deskC, homeC, L.engT - 120, L.engT + 420, ct, 'rgba(89,247,124,0.85)');
+        if (home && ct - L.engT < 700) chip(home.x, home.y, `${id} ✓`, GREEN);
+      } else if (L.unk) {
+        // the hire crossed and never came home: a short arc to a dying dock
+        const dock = arc([cx, cy], deskC, L.fan - 60, Math.min(L.fan + 900, L.unk.t), ct, opt.deskDark ? 'rgba(255,111,89,0.75)' : 'rgba(255,179,71,0.9)');
+        if (dock) chip(dock.x, dock.y, `${id} hire`, opt.deskDark ? RED : AMBER, opt.deskDark ? RED : null);
+      }
+    }
+    // the ask leg — through the wrapper's inside, home with the marks
+    const [pnx, pny] = coord('pilotage', inhouse);
+    if (L.ask.length) {
+      let prev = [cx, cy], prevT = L.fan;
+      const homes = L.pilotHome;
+      const seq = [
+        { to: coord('triage', inhouse), t: L.ask[0].t },
+        { to: coord('chart', inhouse), t: L.ask[1]?.t },
+        { to: coord('board', inhouse), t: L.ask[2]?.t },
+      ].filter((s) => s.t !== undefined);
+      for (const s of seq) {
+        const p = arc(prev, s.to, prevT, Math.max(s.t, prevT + 250), ct, 'rgba(74,214,255,0.75)');
+        if (p) chip(p.x, p.y, `${id} ask`, 'rgba(74,214,255,0.85)');
+        prev = s.to; prevT = Math.max(s.t, prevT + 250);
+      }
+      // the wrapper's answer comes home with the marks on it
+      const homeT = homes ? homes.t : (L.gAsk?.t ?? 9e12);
+      const back = arc(prev, [pnx, pny], homeT - 700, homeT, ct, 'rgba(89,247,124,0.8)');
+      if (back) chip(back.x, back.y, `${id} ✓`, GREEN);
+      if (ct >= homeT && ct < homeT + 1400 && FACTS.marks?.length) {
+        FACTS.marks.forEach((m, i) => {
+          const age = clamp((ct - homeT - i * 140) / 380, 0, 1);
+          if (age <= 0) return;
+          ctx.globalAlpha = age;
+          chip(pnx + 64 + i * 4, pny - 34 - i * 24, m, GREEN);
+          ctx.globalAlpha = 1;
+        });
+      }
+      // the ask framed at our desk: gate breathes, Kit's word arrives, act runs it
+      if (L.gAsk) {
+        const [gx, gy] = coord('gate', inhouse);
+        const askArc = arc([pnx, pny], [gx, gy], L.gAsk.t - 250, L.gAsk.t, ct, 'rgba(74,214,255,0.8)');
+        if (askArc) chip(askArc.x, askArc.y, `${id} ask`, CYAN);
+        if (ct >= L.gAsk.t && ct < (L.chose?.t ?? 9e12)) {
+          const ph = (ct / 300) % (Math.PI * 2);
+          ctx.beginPath(); ctx.arc(gx, gy, 29 + 5 * Math.sin(ph), 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(74,214,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+        }
+        if (L.chose) {
+          const clear = L.chose.chose === 'clear';
+          if (ct >= L.chose.t) {
+            ctx.fillStyle = clear ? GREEN : AMBER; ctx.font = FONT(700, 15);
+            const word = clear ? 'clear' : 'hold';
+            ctx.fillText(`Kit: ${word}`, gx - 24, gy - 34 - (clear ? 0 : 0));
+          }
+          if (clear && L.actEnd?.cleared) {
+            const [ax, ay] = coord('act', inhouse);
+            const actArc = arc([gx, gy], [ax, ay], L.chose.t, L.actEnd.t, ct, 'rgba(255,179,71,0.85)');
+            if (actArc) chip(actArc.x, actArc.y, `${id} do`, AMBER);
+            if (ct >= L.actEnd.t && ct < L.actEnd.t + 800) {
+              const age = ct - L.actEnd.t;
+              ctx.beginPath(); ctx.arc(ax, ay, 22 + 24 * (age / 800), 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(89,247,124,${(0.8 * (1 - age / 800)).toFixed(2)})`; ctx.lineWidth = 2; ctx.stroke();
+            }
+          }
+          if (!clear && L.actEnd?.quiet) {
+            if (ct >= L.actEnd.t) {
+              const [ax, ay] = coord('act', inhouse);
+              ctx.fillStyle = 'rgba(143,168,154,0.8)'; ctx.font = FONT(600, 14);
+              ctx.fillText('nothing follows a hold', ax - 66, ay - 26);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------- the record: our ledger and the desk, from the run's own lines ----------
+const LEDGER_X = 1660;
+function drawRecord(t, ct, opt = {}) {
+  const rows = [];
+  for (const item of D.items) {
+    const f = item.stations.find((s) => s.s === 'file');
+    if (f) rows.push({ t: f.t, text: `filed ${item.vessel} — ${item.info.cargo}`, col: GREEN });
+  }
+  for (const item of D.house.items) {
+    const f = item.stations.find((s) => s.s === 'file');
+    if (f) rows.push({ t: f.t, text: `filed ${item.vessel} — in-house`, col: GREEN });
+  }
+  const decided = [...D.desk, ...D.house.desk];
+  ctx.save();
+  ctx.globalAlpha = DIM;
+  ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(700, 18);
+  ctx.fillText('our ledger', LEDGER_X, 180);
+  let y = 220;
+  for (const r of rows) {
+    const e = DIM * rise(r.t, r.t + 300, ct);
+    if (e <= 0) continue;
+    ctx.globalAlpha = e;
+    ctx.fillStyle = r.col; ctx.font = FONT(700, 17);
+    ctx.fillText('✓ ' + r.text, LEDGER_X, y);
+    y += 40;
+  }
+  ctx.globalAlpha = DIM;
+  const y0 = Math.max(y + 40, 480);
+  ctx.fillStyle = 'rgba(143,168,154,0.75)'; ctx.font = FONT(700, 18);
+  ctx.fillText('the desk — with who and why', LEDGER_X, y0 - 24);
+  ctx.strokeStyle = 'rgba(143,168,154,0.25)'; ctx.beginPath(); ctx.moveTo(LEDGER_X - 10, y0 - 12); ctx.lineTo(1908, y0 - 12); ctx.stroke();
+  let y2 = y0 + 24;
+  for (const d of decided) {
+    const e = (d.t == null ? 0 : DIM * rise(d.t, d.t + 300, ct));
+    if (e <= 0) continue;
+    ctx.globalAlpha = e;
+    const hold = d.option === 'hold';
+    ctx.fillStyle = hold ? AMBER : CYAN; ctx.font = FONT(700, 17);
+    const name = d.who === 'kit' ? 'Kit' : d.who;
+    ctx.fillText(`${name} ${hold ? 'holds' : 'clears'} ${d.vessel}`, LEDGER_X, y2);
+    ctx.fillStyle = 'rgba(143,168,154,0.9)'; ctx.font = FONT(500, 14);
+    const why = (d.why ?? '').split(';')[0];
+    ctx.fillText(why.length > 34 ? why.slice(0, 32) + '…' : why, LEDGER_X, y2 + 20);
+    y2 += 52;
+  }
+  ctx.restore();
+}
+
+// the unknown: a stamp over a dimmed map, the run's own words under it
+function unknownAlpha(ct) {
+  const u = D.unknown;
+  return ct >= u.t - 120 && ct < u.t + 2400 ? rise(u.t - 120, u.t + 140, ct) * fade(u.t + 2050, u.t + 2380, ct) : 0;
+}
+function drawUnknown(t, ct, a) {
+  if (a <= 0) return;
+  const u = D.unknown;
+  const sh = clamp((ct - u.t) / 260, 0, 1);
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.translate(960, 480); ctx.rotate(-0.05);
+  ctx.beginPath(); ctx.roundRect(-360 - 10 * (1 - sh), -96 - 6 * (1 - sh), 720 + 20 * (1 - sh), 190, 12);
+  ctx.strokeStyle = RED; ctx.lineWidth = 6; ctx.stroke();
+  ctx.fillStyle = 'rgba(5,6,7,0.82)'; ctx.fill();
+  ctx.fillStyle = RED; ctx.font = FONT(700, 88);
+  ctx.fillText('UNKNOWN', -256, 22);
+  ctx.fillStyle = 'rgba(232,244,236,0.92)'; ctx.font = FONT(600, 26);
+  ctx.fillText('the hire may or may not have happened', -250, 68);
+  ctx.restore();
+}
+
+// ---------- one frame ----------
+window.VIDEO_SECONDS = 46.4;
+function renderFrame(t) {
+  const inPlay = t >= 8.6 && t < PLAY_END;
+  const ct = inPlay ? colonyT(t) : 0;
+  const inhouse = ct >= (B.houseStart - 200);
+  const unknownT = D.unknown.t;
+  const deskDark = !inhouse && ct >= unknownT - 120;
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, 1920, 1080);
+  const mapDim = t < 39.4 ? 1 : t < 43.6 ? 0.4 : fade(43.45, 43.9, t);
+  const stampA = inPlay ? unknownAlpha(ct) : 0;
+  DIM = mapDim * (1 - 0.72 * stampA);   // every sub-draw's globalAlpha multiplies this
+  if (inhouse) {
+    drawPanel(inhousePanel, t, { alpha: rise(B.houseStart - 300, B.houseStart + 200, ct) });
+    drawNodes(t, ct, { inhouse: true, alpha: 1, breath: inPlay });
+  } else {
+    const partnerA = inPlay && deskDark ? 1 : rise(3.7, 4.4, t);
+    drawPanel(PANELS[0], t, {});
+    drawBoundaries(t, { pulse: boundaryPulse(ct), pulseY: pulseY(ct) });
+    drawPanel(PANELS[1], t, {});
+    drawPanel(PANELS[2], t, { dark: deskDark });
+    drawPanel(PANELS[3], t, {});
+    drawNodes(t, ct, { alpha: 1, deskDark, breath: inPlay });
+  }
+  if (inPlay) drawLegs(ct, { inhouse, deskDark, unknownT });
+  drawUnknown(t, ct, stampA);
+  drawRecord(t, ct, {});
+  if (t > 39.7 && t < 43.5) drawScores(t);
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.translate(-Math.floor(t * 30) % 256, -Math.floor(t * 47) % 256);
+  ctx.fillStyle = grainPat; ctx.fillRect(0, 0, 2176, 1336); ctx.restore();
+  const vg = ctx.createRadialGradient(960, 540, 520, 960, 540, 1250);
+  vg.addColorStop(0, 'rgba(5,6,7,0)'); vg.addColorStop(1, 'rgba(5,6,7,0.55)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, 1920, 1080);
+  captions(t);
+  return t;
+}
+
+const boundaryPulse = (ct) => {
+  // one pulse per crossing beat: the fan-outs, the chart crossing, the returns
+  const chart1 = D.items[0].stations.find((s) => s.s === 'chart');
+  const crosses = [
+    [0, Math.max(B.fanoutT, 1), Math.min(B.hireT, B.fanoutT + 900)],          // the hire crosses boundary 1
+    [1, chart1.t - 900, chart1.t],                                            // the chart crossing
+    [0, B.composedT - 700, B.composedT],                                      // the composed answer comes home
+    [0, (B.answer2T ?? 9e12) - 700, B.answer2T ?? 0],
+  ];
+  const pulse = [0, 0];
+  for (const [i, a, b] of crosses) {
+    if (ct >= a && ct < b) pulse[i] = Math.max(pulse[i], 1 - (ct - a) / Math.max(1, b - a));
+  }
+  return pulse;
+};
+const pulseY = (ct) => [815, 390];
+
+// the summary: the run's own counts, off the same records the picture played
+function drawScores(t) {
+  const lines = [
+    [CYAN, `${FACTS.engines.length} engines carried one workflow`],
+    [AMBER, `${FACTS.boundaries} company boundaries crossed — ${FACTS.companies} companies`],
+    [GREEN, `${FACTS.clearWire} clearance across the wire · ${FACTS.clearHouse} in-house`],
+    [RED, `${FACTS.unknowns} unknown — never guessed, never retried`],
+    [INK, `${FACTS.filed} arrivals filed at our desk · the house rules file never changed`],
+  ];
+  const y0 = 310, lh = 92;
+  lines.forEach(([col, text], i) => {
+    const e2 = rise(39.8 + i * 0.16, 40.3 + i * 0.16, t);
+    if (e2 <= 0) return;
+    ctx.save(); ctx.globalAlpha = e2 * DIM;
+    ctx.font = FONT(700, 34);
+    const w2 = ctx.measureText(text).width + 64;
+    ctx.beginPath(); ctx.roundRect(240, y0 + i * lh - 18, w2, 54, 9);
+    ctx.fillStyle = 'rgba(13,20,17,0.85)'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = col; ctx.font = FONT(700, 34);
+    ctx.fillText(text, 276, y0 + i * lh + 18);
+    ctx.restore();
+  });
+}
+
+// ---------- captions ----------
+function set(id, html, o) {
+  const el = document.getElementById(id);
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.style.opacity = clamp(o, 0, 1).toFixed(3);
+  el.style.transform = `translateY(${((1 - clamp(o, 0, 1)) * 14).toFixed(1)}px)`;
+}
+function captions(t) {
+  if (t < 3.4) {
+    const L = [[0.3, `<span class="line">${FACTS.arrivals} vessels. ${FACTS.engines.length} engines.</span>`],
+               [1.1, `<span class="line">Three companies. Two boundaries.</span>`],
+               [2.0, `<span class="line dim">one house rules file.</span>`],
+               [2.7, `<span class="line accent">no company named in it — the peers file is the deployment.</span>`]];
+    let shown = L[0][1];
+    for (const [a, h] of L) if (t >= a) shown = h;
+    set('cap-hook', shown, t < 3.0 ? rise(0.22, 0.6, t) : fade(3.0, 3.35, t));
+  } else set('cap-hook', '', 0);
+  set('cap-partner', t > 3.6 && t < 8.6
+    ? `<span class="dim">the partners come online — each its own engine, its own inside</span>`
+    : '', t > 3.6 && t < 8.6 ? rise(3.7, 4.2, t) * fade(8.1, 8.55, t) : 0);
+  const w1 = the('trails');
+  set('cap-file', t > w1.v0 + 0.6 && t < w1.v1 + 1.4
+    ? `our desk files every arrival — <span class="accent"><span class="line">an effect of ours,</span><span class="line">kept whatever the border does.</span></span>`
+    : '', t > w1.v0 + 0.6 && t < w1.v1 + 1.4 ? rise(w1.v0 + 0.6, w1.v0 + 1.1, t) * fade(w1.v1 + 0.8, w1.v1 + 1.35, t) : 0);
+  const approach = the('approach');
+  set('cap-hire', t > approach.v0 + 0.1 && t < approach.v1 + 0.6
+    ? `the hire crosses the boundary — <span class="amber">our own procedure, theirs to commit</span>. <span class="dim">the ask crosses too: their whole team is one wrapper.</span>`
+    : '', t > approach.v0 + 0.1 && t < approach.v1 + 0.6 ? rise(approach.v0 + 0.1, approach.v0 + 0.6, t) : 0);
+  const insideW = the('dry-lens'), marksW = the('post-dry');
+  set('cap-inside', t > insideW.v0 - 0.2 && t < insideW.v1 + 3.4
+    ? `inside the wrapper: <span class="cyan">their triage, the chart room (a third engine), the boarding call</span>. <span class="dim">nobody at our desk sees any of it.</span>`
+    : '', t > insideW.v0 - 0.2 && t < insideW.v1 + 3.4 ? rise(insideW.v0 - 0.2, insideW.v0 + 0.3, t) * fade(insideW.v1 + 2.8, insideW.v1 + 3.35, t) : 0);
+  set('cap-marks', t > marksW.v1 - 0.6 && t < the('recruit').v1
+    ? `their answer comes back <span class="accent">composed — every mark on it</span>. <span class="dim">the desk decides; the partner never sees the page.</span>`
+    : '', t > marksW.v1 - 0.6 && t < the('recruit').v1 ? rise(marksW.v1 - 0.6, marksW.v1 - 0.1, t) * fade(the('recruit').v1 - 0.3, the('recruit').v1 + 0.05, t) : 0);
+  const pre = the('pre-drop');
+  set('cap-second', t > pre.v0 - 0.2 && t < pre.v1 + 0.2
+    ? `a second vessel. the hire crosses again. <span class="dim">same rules; the deployment says where.</span>`
+    : '', t > pre.v0 - 0.2 && t < pre.v1 + 0.2 ? rise(pre.v0 - 0.2, pre.v0 + 0.3, t) : 0);
+  const dark = the('drop-lens');
+  set('cap-dark', t > dark.v0 + 0.2 && t < dark.v1 + 3.0
+    ? `<span class="line"><span class="red">the desk goes dark mid-hire.</span></span>` +
+      `<span class="line dim" style="font-size:0.62em">the outcome lands unknown — may or may not have happened. never guessed, never retried.</span>`
+    : '', t > dark.v0 + 0.2 && t < dark.v1 + 3.0 ? rise(dark.v0 + 0.2, dark.v0 + 0.7, t) * fade(dark.v1 + 2.4, dark.v1 + 2.95, t) : 0);
+  const still = the('reroute');
+  set('cap-still', t > still.v0 - 0.2 && t < still.v1 + 0.4
+    ? `their team answers anyway — <span class="cyan">with their own desk dark, the boundary held</span>. Kit <span class="amber">holds</span> on an unknown. <span class="dim">our ledger stands.</span>`
+    : '', t > still.v0 - 0.2 && t < still.v1 + 0.4 ? rise(still.v0 - 0.2, still.v0 + 0.3, t) * fade(still.v1 + 0.3, still.v1 + 0.35, t) : 0);
+  const house = the('inhouse');
+  set('cap-house', t > house.v0 - 0.3 && t < house.v1 + 0.2
+    ? `after the partner: <span class="accent">same rules, no peers file</span> — <span class="dim">the workflow rebuilds in-house.</span>`
+    : '', t > house.v0 - 0.3 && t < house.v1 + 0.2 ? rise(house.v0 - 0.3, house.v0 + 0.2, t) : 0);
+  if (t > 39.7 && t < 43.5) {
+    set('cap-sum', `one record: <span class="accent">${FACTS.clearWire + FACTS.clearHouse} clearances · ${FACTS.unknowns} unknown · ${FACTS.filed} filed</span> — <span class="dim">and the house rules file never changed.</span>`,
+      rise(39.7, 40.2, t) * fade(42.7, 43.4, t));
+  } else set('cap-sum', '', 0);
+  const ec = document.getElementById('endcard');
+  if (t > 43.5) {
+    ec.style.opacity = rise(43.5, 44.0, t).toFixed(3);
+    if (ec.dataset.h !== 'e') {
+      ec.dataset.h = 'e';
+      ec.innerHTML = `
+        <div class="cap" style="position:static; opacity:1; font-size:74px">agent-neuron</div>
+        <div class="cap" style="position:static; opacity:1; font-size:40px; margin-top:14px"><span class="accent">the wrapper is the boundary.</span> the peers file is the deployment.</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:29px; margin-top:44px">${FACTS.engines.length} engines · ${FACTS.companies} companies · ${FACTS.boundaries} boundaries crossed · ${FACTS.clearWire + FACTS.clearHouse} clearances · ${FACTS.unknowns} unknown · ${FACTS.filed} filed</div>
+        <div class="cap dim2" style="position:static; opacity:1; font-size:25px; margin-top:10px">a company brings its team online as one wrapper, the workflow forms around it, and when it goes dark the run records exactly what was lost · rendered from the run's own record</div>`;
+    }
+  } else if (t < 43.3) { if (ec.dataset.h) { ec.dataset.h = ''; ec.style.opacity = '0'; ec.innerHTML = ''; } }
+}
+
+// ---------- sound: when the scenes want it ----------
+function soundEvents() {
+  const ev = [];
+  const add = (t, kind, gain = 1, param = null) => { if (Number.isFinite(t)) ev.push({ t: Math.round(t * 1000) / 1000, kind, gain: Math.round(gain * 100) / 100, param }); };
+  add(0.10, 'bed', 1, window.VIDEO_SECONDS);
+  for (const a of [0.30, 1.10, 2.00, 2.70]) add(a, 'type', 0.9);
+  for (const a of [3.9, 4.2, 4.5, 4.8, 5.1]) add(a, 'pop', 0.65);                  // the offices come online
+  add(videoT(B.fanoutT), 'whoosh', 0.9);                                           // the hire crosses
+  add(videoT(B.hireT), 'pop', 0.9);                                                // committed on their desk
+  const chart1 = D.items[0].stations.find((s) => s.s === 'chart');
+  add(videoT(chart1.t), 'whoosh', 0.7);                                            // the second boundary
+  add(videoT(B.composedT), 'drop', 0.9);                                           // composed, with marks
+  add(videoT(B.clearT), 'blip', 0.6);                                              // Kit's word
+  add(videoT(B.actT), 'pop', 0.7);                                                 // the clearance logged
+  add(videoT(B.arr2T), 'pop', 0.6);
+  add(videoT(B.fanout2T), 'whoosh', 0.8);
+  add(videoT(D.unknown.t) - 0.05, 'thud', 1);                                      // the desk dies
+  add(videoT(D.unknown.t) + 0.35, 'stamp', 0.9);                                   // the UNKNOWN
+  if (B.answer2T) add(videoT(B.answer2T), 'drop', 0.8);                            // their team answers anyway
+  if (B.holdT) add(videoT(B.holdT), 'blip', 0.55);
+  for (const item of D.house.items) {
+    const a = item.stations.find((s) => s.s === 'act' && s.cleared);
+    if (a) add(videoT(a.t), 'pop', 0.55);                                          // the in-house clearances
+  }
+  add(39.6, 'settle', 1);
+  add(43.55, 'stamp', 1);
+  return ev.sort((a, b) => a.t - b.t);
+}
+window.soundEvents = soundEvents;
+window.renderFrame = renderFrame;
+window.READY = false;
+renderFrame(0);
+window.SOUND_EVENTS = soundEvents();
+window.READY = true;
+</script>
+</body>
+</html>
