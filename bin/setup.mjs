@@ -43,4 +43,4 @@ if (!fs.existsSync(ENGINE)) {
   }
   ensureEngine((l) => say(l));
 }
-say('ready. Try: npm run watch colony   (or quorum, backlog, spend, refunds, oncall)');
+say(`ready. Try: npm run watch colony   (or quorum, backlog, spend, refunds, oncall, companies)`);

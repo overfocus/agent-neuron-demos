@@ -17,7 +17,7 @@ git clone https://github.com/overfocus/agent-neuron-demos && cd agent-neuron-dem
 `setup` fetches the engine and the 3D viewer next to this repo and builds
 them; `watch` starts the viewer, opens a page with the network in 3D and
 every person's desk, and runs the demo. Swap `colony` for `quorum`,
-`backlog`, `spend`, `refunds` or `oncall`. More in
+`backlog`, `spend`, `refunds`, `companies` or `oncall`. More in
 [GETTING-STARTED.md](GETTING-STARTED.md), with a shot list per demo for
 recording them.
 
@@ -36,6 +36,7 @@ stderr and in its trace.
 | `spend` | An agent and a critic in a loop, under a credit ceiling per task. The spend report goes to the manager on the desk; the answer becomes a `policy.json` diff, and round 2 runs under the new ceiling. |
 | `refunds` | Paying is an effect. Large refunds wait for a person. A resubmitted request mid-payment does not cut the payment; its answer is recorded but not forwarded, and the duplicate returns the first payment's result. A payment that crashes after the money moved is `unknown`, and a reconcile run asks the ledger. |
 | `oncall` | A decision that goes stale before it is made: a newer alert for the same service withdraws the waiting ask from the desk, the late answer is refused, and the new ask takes its place. |
+| `companies` | Four engines playing two companies: our quay office's run, the pilot office's whole team behind one wrapper (their own engine), the pilot office's dispatch desk (their second engine, where our hire is placed and committed as an effect), and the chart room (their supplier, one node of their graph). The hire crosses two company boundaries and comes back composed with every mark; Kit decides on our desk, which the partners never see. The house rules never name a company - the run's peers file is the whole deployment. On ARR-2 the dispatch desk goes dark mid-hire: an effect that started and does not resolve is unknown, never guessed, never retried; their team answers anyway with their own desk dark, our ledger keeps every arrival, and Kit holds. Take two: no peers file at all - the same house rules rebuild in-house and both vessels clear. |
 | `colony` | *n* ants, food and a nest, with no one in charge. Each ant is its own long-lived neuron with its own response threshold; it forages when the colony is hungry enough for it. The trail is the engine's: the network file's `ground` has the nest lay pheromone per delivery, the engine evaporates it, and every return that names no `to` is routed by its draw - the strong trail, or the base mass's leak to a nearest ant. The nest answers every arrival to every ant (the colony's drumbeat), and an idle recruited ant takes the trip at once. The network file places every neuron (`at`), so the view is a map, and the ants walk it. The nearest food runs out and a new patch appears on the other side; seeded drop sites surface part-way under `--seed` (default 11: same seed, same take; 0: a fresh map every run). |
 
 ## Run them

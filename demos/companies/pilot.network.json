@@ -1,0 +1,16 @@
+{
+  "version": 0,
+  "name": "pilotage",
+  "description": "The pilot office's own team, inside their own walls. To the quay office this whole file is one wrapper (the pilotage node of their network file): their triage clerk, their chart lookup run by the chart room on a third engine, and their boarding team, whose answer crosses the boundary back. The quay office never sees inside: the wrapper answers, the office keeps its inside and its accounting.",
+  "neurons": [
+    { "id": "triage", "description": "The pilot office's triage clerk: takes the ask, marks it theirs.", "run": ["node", "neurons/pilot/triage.mjs"] },
+    { "id": "chart", "description": "The chart room, on its own engine: the pilot office's own supplier, reached through the pilot office's own peers file.", "run": ["node", "neurons/pilot/chart.mjs"] },
+    { "id": "board", "description": "The boarding team: the slow part of the pilotage, and the exit the quay office sees. Their answer becomes our harbourmaster's ask.", "run": ["node", "neurons/pilot/board.mjs"], "timeout": 20000 }
+  ],
+  "links": [
+    { "from": "triage", "to": "chart" },
+    { "from": "chart", "to": "board" }
+  ],
+  "entry": "triage",
+  "exit": "board"
+}
