@@ -45,6 +45,11 @@ You need Node 22 and the [agent-neuron](https://github.com/overfocus/agent-neuro
 checkout next to this one (or `AGENT_NEURON_ROOT`). The engine is built with
 `cargo` the first time, so you also need a Rust toolchain.
 
+`ENGINE` names the agent-neuron commit these demos' tests last passed on. It is
+a record, not a requirement: the demos run on whatever the checkout builds.
+`npm run doctor` shows it beside the engine in use, and `npm run pin` builds
+the engine, runs `npm test` and records the commit when that passes.
+
 ```sh
 git clone https://github.com/overfocus/agent-neuron
 git clone https://github.com/overfocus/agent-neuron-demos

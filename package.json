@@ -13,6 +13,7 @@
     "watch": "node bin/watch.mjs",
     "demo": "node bin/demo.mjs",
     "doctor": "node bin/doctor.mjs",
+    "pin": "node bin/pin.mjs",
     "stage": "node bin/stage.mjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "check": "node --test --test-concurrency=1 test/*.test.mjs"
