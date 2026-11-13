@@ -5,7 +5,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_NEURON, ENGINE, HERE, ensureEngine } from '../lib/engine.mjs';
+import { AGENT_NEURON, ENGINE, HERE, engineCommit, ensureEngine, pinnedCommit } from '../lib/engine.mjs';
 
 let bad = 0;
 const ok = (what) => console.log(`  ok    ${what}`);
@@ -32,6 +32,15 @@ else if (!bad && spawnSync('cargo', ['--version']).status === 0) {
     no('the engine', `cargo build failed: ${e.message}`);
   }
 } else no('the engine', 'install Rust (https://rustup.rs), then run npm run doctor again: it builds the engine');
+
+// Which engine this is, beside the one the tests last passed on. Information only.
+if (fs.existsSync(ENGINE)) {
+  const have = engineCommit();
+  const pinned = pinnedCommit();
+  const short = (c) => (c ? c.slice(0, 7) + (c.endsWith('-dirty') ? '-dirty' : '') : 'unknown');
+  if (have && pinned && have === pinned) ok(`engine commit ${short(have)}, the one the tests last passed on`);
+  else if (pinned) opt(`engine commit ${short(have)}; the tests last passed on ${short(pinned)}`, 'fine if npm test passes; npm run pin records it');
+}
 
 const viz = path.resolve(process.env.AGENT_NEURON_VIZ ?? path.join(HERE, '../agent-neuron-viz'));
 if (!fs.existsSync(path.join(viz, 'package.json'))) {
